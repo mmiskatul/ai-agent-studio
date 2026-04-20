@@ -1,16 +1,18 @@
-import { Link, useLocation } from "@tanstack/react-router";
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Bot, LayoutDashboard, LogOut, Plus } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 
 export function AppSidebar() {
-  const location = useLocation();
+  const pathname = usePathname();
   const { signOut } = useAuth();
-  const currentPath = location.pathname;
 
   const navItems = [
-    { label: "Dashboard", to: "/dashboard" as const, icon: LayoutDashboard },
-    { label: "New Agent", to: "/agents/new" as const, icon: Plus },
+    { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { label: "New Agent", href: "/agents/new", icon: Plus },
   ];
 
   return (
@@ -22,11 +24,11 @@ export function AppSidebar() {
 
       <nav className="flex-1 space-y-1 p-3">
         {navItems.map((item) => {
-          const active = currentPath === item.to;
+          const active = pathname === item.href;
           return (
             <Link
-              key={item.to}
-              to={item.to}
+              key={item.href}
+              href={item.href}
               className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                 active
                   ? "bg-sidebar-accent text-sidebar-primary"

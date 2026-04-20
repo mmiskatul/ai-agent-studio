@@ -1,99 +1,172 @@
-import { supabase } from "@/integrations/supabase/client";
-import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
+export interface Agent {
+  id: string;
+  name: string;
+  role: string;
+  purpose: string;
+  template_type: string | null;
+  system_prompt: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
 
-export type Agent = Tables<"agents">;
-export type AgentInsert = TablesInsert<"agents">;
-export type AgentUpdate = TablesUpdate<"agents">;
-export type Chat = Tables<"chats">;
-export type Message = Tables<"messages">;
+export type AgentInsert = Omit<Agent, "id" | "created_at" | "updated_at">;
+export type AgentUpdate = Partial<AgentInsert>;
+
+export interface Chat {
+  id: string;
+  agent_id: string;
+  created_at: string;
+}
+
+export interface Message {
+  id: string;
+  chat_id: string;
+  sender_type: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
+const AGENTS_STORAGE_KEY = "agenthub.agents";
+const CHATS_STORAGE_KEY = "agenthub.chats";
+const MESSAGES_STORAGE_KEY = "agenthub.messages";
+
+function requireBrowserStorage() {
+  if (typeof window === "undefined") {
+    throw new Error("Local frontend storage is only available in the browser");
+  }
+}
+
+function createId(prefix: string) {
+  const random =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2);
+  return `${prefix}_${random}`;
+}
+
+function readCollection<T>(key: string): T[] {
+  requireBrowserStorage();
+
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return [];
+
+  try {
+    return JSON.parse(raw) as T[];
+  } catch {
+    window.localStorage.removeItem(key);
+    return [];
+  }
+}
+
+function writeCollection<T>(key: string, value: T[]) {
+  requireBrowserStorage();
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
 
 export async function fetchAgents() {
-  const { data, error } = await supabase
-    .from("agents")
-    .select("*")
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return data;
+  return readCollection<Agent>(AGENTS_STORAGE_KEY).sort((a, b) =>
+    b.created_at.localeCompare(a.created_at),
+  );
 }
 
 export async function fetchAgent(id: string) {
-  const { data, error } = await supabase
-    .from("agents")
-    .select("*")
-    .eq("id", id)
-    .single();
-  if (error) throw error;
-  return data;
+  const agent = readCollection<Agent>(AGENTS_STORAGE_KEY).find((agent) => agent.id === id);
+  if (!agent) throw new Error("Agent not found");
+  return agent;
 }
 
-export async function createAgent(agent: Omit<AgentInsert, "user_id">) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-  const { data, error } = await supabase
-    .from("agents")
-    .insert({ ...agent, user_id: user.id })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+export async function createAgent(agent: AgentInsert) {
+  const agents = readCollection<Agent>(AGENTS_STORAGE_KEY);
+  const now = new Date().toISOString();
+  const created: Agent = {
+    ...agent,
+    id: createId("agent"),
+    template_type: agent.template_type || null,
+    created_at: now,
+    updated_at: now,
+  };
+
+  writeCollection(AGENTS_STORAGE_KEY, [created, ...agents]);
+  return created;
 }
 
 export async function updateAgent(id: string, updates: AgentUpdate) {
-  const { data, error } = await supabase
-    .from("agents")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+  const agents = readCollection<Agent>(AGENTS_STORAGE_KEY);
+  const index = agents.findIndex((agent) => agent.id === id);
+  if (index === -1) throw new Error("Agent not found");
+
+  const updated = {
+    ...agents[index],
+    ...updates,
+    template_type: updates.template_type ?? agents[index].template_type,
+    updated_at: new Date().toISOString(),
+  };
+
+  agents[index] = updated;
+  writeCollection(AGENTS_STORAGE_KEY, agents);
+  return updated;
 }
 
 export async function deleteAgent(id: string) {
-  const { error } = await supabase.from("agents").delete().eq("id", id);
-  if (error) throw error;
+  writeCollection(
+    AGENTS_STORAGE_KEY,
+    readCollection<Agent>(AGENTS_STORAGE_KEY).filter((agent) => agent.id !== id),
+  );
+
+  const chats = readCollection<Chat>(CHATS_STORAGE_KEY);
+  const deletedChatIds = new Set(
+    chats.filter((chat) => chat.agent_id === id).map((chat) => chat.id),
+  );
+
+  writeCollection(
+    CHATS_STORAGE_KEY,
+    chats.filter((chat) => chat.agent_id !== id),
+  );
+  writeCollection(
+    MESSAGES_STORAGE_KEY,
+    readCollection<Message>(MESSAGES_STORAGE_KEY).filter(
+      (message) => !deletedChatIds.has(message.chat_id),
+    ),
+  );
 }
 
 export async function getOrCreateChat(agentId: string) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-
-  const { data: existing } = await supabase
-    .from("chats")
-    .select("*")
-    .eq("agent_id", agentId)
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .single();
+  const chats = readCollection<Chat>(CHATS_STORAGE_KEY);
+  const existing = chats.find((chat) => chat.agent_id === agentId);
 
   if (existing) return existing;
 
-  const { data, error } = await supabase
-    .from("chats")
-    .insert({ agent_id: agentId, user_id: user.id })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+  const chat = {
+    id: createId("chat"),
+    agent_id: agentId,
+    created_at: new Date().toISOString(),
+  };
+
+  writeCollection(CHATS_STORAGE_KEY, [chat, ...chats]);
+  return chat;
 }
 
 export async function fetchMessages(chatId: string) {
-  const { data, error } = await supabase
-    .from("messages")
-    .select("*")
-    .eq("chat_id", chatId)
-    .order("created_at", { ascending: true });
-  if (error) throw error;
-  return data;
+  return readCollection<Message>(MESSAGES_STORAGE_KEY)
+    .filter((message) => message.chat_id === chatId)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
-export async function addMessage(chatId: string, senderType: "user" | "assistant", content: string) {
-  const { data, error } = await supabase
-    .from("messages")
-    .insert({ chat_id: chatId, sender_type: senderType, content })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+export async function addMessage(
+  chatId: string,
+  senderType: "user" | "assistant",
+  content: string,
+) {
+  const messages = readCollection<Message>(MESSAGES_STORAGE_KEY);
+  const message = {
+    id: createId("message"),
+    chat_id: chatId,
+    sender_type: senderType,
+    content,
+    created_at: new Date().toISOString(),
+  };
+
+  writeCollection(MESSAGES_STORAGE_KEY, [...messages, message]);
+  return message;
 }

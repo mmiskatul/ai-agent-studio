@@ -1,24 +1,26 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useState, useEffect, useCallback } from "react";
-import { fetchAgent, getOrCreateChat, fetchMessages, addMessage, type Agent, type Message } from "@/lib/agent-api";
+"use client";
+
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { ArrowLeft, Loader2 } from "lucide-react";
+import {
+  fetchAgent,
+  getOrCreateChat,
+  fetchMessages,
+  addMessage,
+  type Agent,
+  type Message,
+} from "@/lib/agent-api";
 import { streamChat } from "@/lib/chat-stream";
 import { ChatInterface } from "@/components/ChatInterface";
-import { Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AUTHENTICATED_HOME } from "@/lib/routes";
 
-export const Route = createFileRoute("/_authenticated/agents/$agentId/chat")({
-  head: () => ({
-    meta: [
-      { title: "Chat — AgentHub" },
-      { name: "description", content: "Test your AI agent in a chat" },
-    ],
-  }),
-  component: ChatPage,
-});
-
-function ChatPage() {
-  const { agentId } = Route.useParams();
-  const navigate = useNavigate();
+export default function ChatPage() {
+  const params = useParams<{ agentId: string }>();
+  const agentId = params.agentId;
+  const router = useRouter();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -81,7 +83,7 @@ function ChatPage() {
         },
       });
     },
-    [chatId, agent, messages],
+    [agent, chatId, messages],
   );
 
   if (loading) {
@@ -96,7 +98,7 @@ function ChatPage() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4">
         <p className="text-muted-foreground">Agent not found</p>
-        <Button variant="outline" onClick={() => navigate({ to: "/dashboard" })}>
+        <Button variant="outline" onClick={() => router.push(AUTHENTICATED_HOME)}>
           Back to Dashboard
         </Button>
       </div>
@@ -106,7 +108,7 @@ function ChatPage() {
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col">
       <div className="flex items-center gap-2 border-b border-border px-4 py-2">
-        <Link to="/dashboard">
+        <Link href={AUTHENTICATED_HOME}>
           <Button variant="ghost" size="sm" className="gap-2">
             <ArrowLeft className="h-4 w-4" />
             Dashboard

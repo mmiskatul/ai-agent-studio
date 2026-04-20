@@ -27,7 +27,13 @@ interface AgentFormProps {
   isSubmitting: boolean;
 }
 
-export function AgentForm({ initialValues, onSubmit, onCancel, submitLabel, isSubmitting }: AgentFormProps) {
+export function AgentForm({
+  initialValues,
+  onSubmit,
+  onCancel,
+  submitLabel,
+  isSubmitting,
+}: AgentFormProps) {
   const [name, setName] = useState(initialValues?.name ?? "");
   const [role, setRole] = useState(initialValues?.role ?? "");
   const [purpose, setPurpose] = useState(initialValues?.purpose ?? "");
@@ -84,12 +90,7 @@ export function AgentForm({ initialValues, onSubmit, onCancel, submitLabel, isSu
             </Button>
           ))}
           {templateType && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setTemplateType("")}
-            >
+            <Button type="button" variant="ghost" size="sm" onClick={() => setTemplateType("")}>
               Clear
             </Button>
           )}
@@ -99,26 +100,54 @@ export function AgentForm({ initialValues, onSubmit, onCancel, submitLabel, isSu
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <Label htmlFor="name">Agent Name *</Label>
-          <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="My Agent" className="mt-1" />
+          <Input
+            id="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="My Agent"
+            className="mt-1"
+          />
           {errors.name && <p className="mt-1 text-xs text-destructive">{errors.name}</p>}
         </div>
         <div>
           <Label htmlFor="role">Role *</Label>
-          <Input id="role" value={role} onChange={(e) => setRole(e.target.value)} placeholder="Customer Support Specialist" className="mt-1" />
+          <Input
+            id="role"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            placeholder="Customer Support Specialist"
+            className="mt-1"
+          />
           {errors.role && <p className="mt-1 text-xs text-destructive">{errors.role}</p>}
         </div>
       </div>
 
       <div>
         <Label htmlFor="purpose">Purpose *</Label>
-        <Textarea id="purpose" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Describe what this agent does..." rows={2} className="mt-1" />
+        <Textarea
+          id="purpose"
+          value={purpose}
+          onChange={(e) => setPurpose(e.target.value)}
+          placeholder="Describe what this agent does..."
+          rows={2}
+          className="mt-1"
+        />
         {errors.purpose && <p className="mt-1 text-xs text-destructive">{errors.purpose}</p>}
       </div>
 
       <div>
         <Label htmlFor="systemPrompt">System Instructions *</Label>
-        <Textarea id="systemPrompt" value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} placeholder="Define how the agent should behave..." rows={6} className="mt-1 font-mono text-sm" />
-        {errors.systemPrompt && <p className="mt-1 text-xs text-destructive">{errors.systemPrompt}</p>}
+        <Textarea
+          id="systemPrompt"
+          value={systemPrompt}
+          onChange={(e) => setSystemPrompt(e.target.value)}
+          placeholder="Define how the agent should behave..."
+          rows={6}
+          className="mt-1 font-mono text-sm"
+        />
+        {errors.systemPrompt && (
+          <p className="mt-1 text-xs text-destructive">{errors.systemPrompt}</p>
+        )}
       </div>
 
       <div>

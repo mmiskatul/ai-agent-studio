@@ -1,20 +1,13 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+"use client";
+
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createAgent } from "@/lib/agent-api";
 import { AgentForm } from "@/components/AgentForm";
+import { AUTHENTICATED_HOME } from "@/lib/routes";
 
-export const Route = createFileRoute("/_authenticated/agents/new")({
-  head: () => ({
-    meta: [
-      { title: "Create Agent — AgentHub" },
-      { name: "description", content: "Create a new AI agent" },
-    ],
-  }),
-  component: NewAgentPage,
-});
-
-function NewAgentPage() {
-  const navigate = useNavigate();
+export default function NewAgentPage() {
+  const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit(values: {
@@ -28,7 +21,7 @@ function NewAgentPage() {
     setIsSubmitting(true);
     try {
       await createAgent(values);
-      navigate({ to: "/dashboard" });
+      router.push(AUTHENTICATED_HOME);
     } catch (err) {
       console.error("Failed to create agent:", err);
     } finally {
@@ -42,7 +35,7 @@ function NewAgentPage() {
       <div className="rounded-xl border border-border bg-card p-6">
         <AgentForm
           onSubmit={handleSubmit}
-          onCancel={() => navigate({ to: "/dashboard" })}
+          onCancel={() => router.push(AUTHENTICATED_HOME)}
           submitLabel="Create Agent"
           isSubmitting={isSubmitting}
         />

@@ -51,7 +51,9 @@ export function ChatInterface({
         {messages.length === 0 && !streamingContent && (
           <div className="flex h-full flex-col items-center justify-center text-center">
             <Bot className="mb-3 h-12 w-12 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">Send a message to start chatting with {agent.name}</p>
+            <p className="text-sm text-muted-foreground">
+              Send a message to start chatting with {agent.name}
+            </p>
           </div>
         )}
 

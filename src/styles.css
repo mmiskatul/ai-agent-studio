@@ -1,5 +1,6 @@
 @import "tailwindcss" source(none);
 @source "../src";
+@source "../src/app";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
@@ -64,27 +65,27 @@
   --primary: oklch(0.55 0.19 260);
   --primary-foreground: oklch(0.985 0.002 250);
   --secondary: oklch(0.955 0.008 260);
-  --secondary-foreground: oklch(0.30 0.04 260);
+  --secondary-foreground: oklch(0.3 0.04 260);
   --muted: oklch(0.955 0.008 260);
   --muted-foreground: oklch(0.52 0.02 260);
   --accent: oklch(0.955 0.008 260);
-  --accent-foreground: oklch(0.30 0.04 260);
+  --accent-foreground: oklch(0.3 0.04 260);
   --destructive: oklch(0.58 0.22 25);
   --destructive-foreground: oklch(0.985 0.002 250);
   --border: oklch(0.915 0.008 260);
   --input: oklch(0.915 0.008 260);
   --ring: oklch(0.55 0.19 260);
   --chart-1: oklch(0.55 0.19 260);
-  --chart-2: oklch(0.60 0.15 170);
+  --chart-2: oklch(0.6 0.15 170);
   --chart-3: oklch(0.65 0.18 45);
-  --chart-4: oklch(0.55 0.20 310);
-  --chart-5: oklch(0.60 0.20 25);
+  --chart-4: oklch(0.55 0.2 310);
+  --chart-5: oklch(0.6 0.2 25);
   --sidebar: oklch(0.975 0.004 260);
   --sidebar-foreground: oklch(0.145 0.025 260);
   --sidebar-primary: oklch(0.55 0.19 260);
   --sidebar-primary-foreground: oklch(0.985 0.002 250);
   --sidebar-accent: oklch(0.94 0.01 260);
-  --sidebar-accent-foreground: oklch(0.30 0.04 260);
+  --sidebar-accent-foreground: oklch(0.3 0.04 260);
   --sidebar-border: oklch(0.915 0.008 260);
   --sidebar-ring: oklch(0.55 0.19 260);
   --success: oklch(0.58 0.17 155);
@@ -112,7 +113,9 @@
     background-color: var(--color-card);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-xl);
-    box-shadow: 0 1px 3px 0 oklch(0 0 0 / 0.04), 0 1px 2px -1px oklch(0 0 0 / 0.04);
+    box-shadow:
+      0 1px 3px 0 oklch(0 0 0 / 0.04),
+      0 1px 2px -1px oklch(0 0 0 / 0.04);
   }
 
   .agent-card {

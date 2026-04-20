@@ -1,22 +1,21 @@
-import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
-import { useAuth } from "@/hooks/use-auth";
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { AppSidebar } from "@/components/AppSidebar";
 import { TopBar } from "@/components/TopBar";
-import { useEffect } from "react";
+import { useAuth } from "@/hooks/use-auth";
+import { SIGN_IN_ROUTE } from "@/lib/routes";
 
-export const Route = createFileRoute("/_authenticated")({
-  component: AuthenticatedLayout,
-});
-
-function AuthenticatedLayout() {
+export default function AuthenticatedLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const { user, loading } = useAuth();
-  const navigate = useNavigate();
+  const router = useRouter();
 
   useEffect(() => {
     if (!loading && !user) {
-      navigate({ to: "/login" });
+      router.replace(SIGN_IN_ROUTE);
     }
-  }, [loading, user, navigate]);
+  }, [loading, router, user]);
 
   if (loading) {
     return (
@@ -33,9 +32,7 @@ function AuthenticatedLayout() {
       <AppSidebar />
       <div className="flex flex-1 flex-col">
         <TopBar />
-        <main className="flex-1 overflow-auto">
-          <Outlet />
-        </main>
+        <main className="flex-1 overflow-auto">{children}</main>
       </div>
     </div>
   );

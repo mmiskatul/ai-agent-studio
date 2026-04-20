@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import Link from "next/link";
 import { Bot, MessageSquare, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Agent } from "@/lib/agent-api";
@@ -41,13 +41,13 @@ export function AgentCard({ agent, onDelete }: AgentCardProps) {
       )}
 
       <div className="flex items-center gap-2 border-t border-border pt-3">
-        <Link to="/agents/$agentId/chat" params={{ agentId: agent.id }} className="flex-1" preload={false}>
+        <Link href={`/agents/${agent.id}/chat`} className="flex-1">
           <Button variant="default" size="sm" className="w-full gap-2">
             <MessageSquare className="h-3.5 w-3.5" />
             Chat
           </Button>
         </Link>
-        <Link to="/agents/$agentId" params={{ agentId: agent.id }} preload={false}>
+        <Link href={`/agents/${agent.id}`}>
           <Button variant="outline" size="sm">
             <Pencil className="h-3.5 w-3.5" />
           </Button>

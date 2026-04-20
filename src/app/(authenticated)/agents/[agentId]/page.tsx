@@ -1,24 +1,18 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+"use client";
+
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { Trash2, Loader2 } from "lucide-react";
 import { fetchAgent, updateAgent, deleteAgent, type Agent } from "@/lib/agent-api";
 import { AgentForm } from "@/components/AgentForm";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { Button } from "@/components/ui/button";
-import { Trash2, Loader2 } from "lucide-react";
+import { AUTHENTICATED_HOME } from "@/lib/routes";
 
-export const Route = createFileRoute("/_authenticated/agents/$agentId")({
-  head: () => ({
-    meta: [
-      { title: "Edit Agent — AgentHub" },
-      { name: "description", content: "Edit your AI agent configuration" },
-    ],
-  }),
-  component: EditAgentPage,
-});
-
-function EditAgentPage() {
-  const { agentId } = Route.useParams();
-  const navigate = useNavigate();
+export default function EditAgentPage() {
+  const params = useParams<{ agentId: string }>();
+  const agentId = params.agentId;
+  const router = useRouter();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -44,7 +38,7 @@ function EditAgentPage() {
     setIsSubmitting(true);
     try {
       await updateAgent(agentId, values);
-      navigate({ to: "/dashboard" });
+      router.push(AUTHENTICATED_HOME);
     } catch (err) {
       console.error("Failed to update agent:", err);
     } finally {
@@ -56,7 +50,7 @@ function EditAgentPage() {
     setIsDeleting(true);
     try {
       await deleteAgent(agentId);
-      navigate({ to: "/dashboard" });
+      router.push(AUTHENTICATED_HOME);
     } catch (err) {
       console.error("Failed to delete agent:", err);
     } finally {
@@ -76,7 +70,7 @@ function EditAgentPage() {
     return (
       <div className="p-6 text-center">
         <p className="text-muted-foreground">{error || "Agent not found"}</p>
-        <Button variant="outline" className="mt-4" onClick={() => navigate({ to: "/dashboard" })}>
+        <Button variant="outline" className="mt-4" onClick={() => router.push(AUTHENTICATED_HOME)}>
           Back to Dashboard
         </Button>
       </div>
@@ -87,7 +81,12 @@ function EditAgentPage() {
     <div className="mx-auto max-w-2xl p-6">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground">Edit Agent</h1>
-        <Button variant="outline" size="sm" className="gap-2 text-destructive" onClick={() => setShowDelete(true)}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2 text-destructive"
+          onClick={() => setShowDelete(true)}
+        >
           <Trash2 className="h-3.5 w-3.5" />
           Delete
         </Button>
@@ -103,7 +102,7 @@ function EditAgentPage() {
             status: agent.status,
           }}
           onSubmit={handleSubmit}
-          onCancel={() => navigate({ to: "/dashboard" })}
+          onCancel={() => router.push(AUTHENTICATED_HOME)}
           submitLabel="Save Changes"
           isSubmitting={isSubmitting}
         />
