@@ -3,7 +3,7 @@ import { useState } from "react";
 import { createAgent } from "@/lib/agent-api";
 import { AgentForm } from "@/components/AgentForm";
 
-export const Route = createFileRoute("/_authenticated/agents_/new")({
+export const Route = createFileRoute("/_authenticated/agents/new")({
   head: () => ({
     meta: [
       { title: "Create Agent — AgentHub" },

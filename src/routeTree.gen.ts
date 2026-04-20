@@ -15,7 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AuthenticatedAgentsNewRouteImport } from './routes/_authenticated/agents_.new'
+import { Route as AuthenticatedAgentsNewRouteImport } from './routes/_authenticated/agents.new'
 import { Route as AuthenticatedAgentsAgentIdRouteImport } from './routes/_authenticated/agents.$agentId'
 import { Route as AuthenticatedAgentsAgentIdChatRouteImport } from './routes/_authenticated/agents.$agentId.chat'
 
@@ -49,7 +49,7 @@ const IndexRoute = IndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAgentsNewRoute = AuthenticatedAgentsNewRouteImport.update({
-  id: '/agents_/new',
+  id: '/agents/new',
   path: '/agents/new',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
@@ -95,7 +95,7 @@ export interface FileRoutesById {
   '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
   '/_authenticated/agents/$agentId': typeof AuthenticatedAgentsAgentIdRouteWithChildren
-  '/_authenticated/agents_/new': typeof AuthenticatedAgentsNewRoute
+  '/_authenticated/agents/new': typeof AuthenticatedAgentsNewRoute
   '/_authenticated/agents/$agentId/chat': typeof AuthenticatedAgentsAgentIdChatRoute
 }
 export interface FileRouteTypes {
@@ -128,7 +128,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/reset-password'
     | '/_authenticated/agents/$agentId'
-    | '/_authenticated/agents_/new'
+    | '/_authenticated/agents/new'
     | '/_authenticated/agents/$agentId/chat'
   fileRoutesById: FileRoutesById
 }
@@ -185,8 +185,8 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/agents_/new': {
-      id: '/_authenticated/agents_/new'
+    '/_authenticated/agents/new': {
+      id: '/_authenticated/agents/new'
       path: '/agents/new'
       fullPath: '/agents/new'
       preLoaderRoute: typeof AuthenticatedAgentsNewRouteImport
