@@ -96,7 +96,7 @@ function ChatPage() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4">
         <p className="text-muted-foreground">Agent not found</p>
-        <Button variant="outline" onClick={() => navigate({ to: "/" })}>
+        <Button variant="outline" onClick={() => navigate({ to: "/dashboard" })}>
           Back to Dashboard
         </Button>
       </div>
@@ -106,7 +106,7 @@ function ChatPage() {
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col">
       <div className="flex items-center gap-2 border-b border-border px-4 py-2">
-        <Link to="/">
+        <Link to="/dashboard">
           <Button variant="ghost" size="sm" className="gap-2">
             <ArrowLeft className="h-4 w-4" />
             Dashboard
