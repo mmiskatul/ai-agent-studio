@@ -44,7 +44,7 @@ function EditAgentPage() {
     setIsSubmitting(true);
     try {
       await updateAgent(agentId, values);
-      navigate({ to: "/" });
+      navigate({ to: "/dashboard" });
     } catch (err) {
       console.error("Failed to update agent:", err);
     } finally {
@@ -56,7 +56,7 @@ function EditAgentPage() {
     setIsDeleting(true);
     try {
       await deleteAgent(agentId);
-      navigate({ to: "/" });
+      navigate({ to: "/dashboard" });
     } catch (err) {
       console.error("Failed to delete agent:", err);
     } finally {
@@ -76,7 +76,7 @@ function EditAgentPage() {
     return (
       <div className="p-6 text-center">
         <p className="text-muted-foreground">{error || "Agent not found"}</p>
-        <Button variant="outline" className="mt-4" onClick={() => navigate({ to: "/" })}>
+        <Button variant="outline" className="mt-4" onClick={() => navigate({ to: "/dashboard" })}>
           Back to Dashboard
         </Button>
       </div>
@@ -103,7 +103,7 @@ function EditAgentPage() {
             status: agent.status,
           }}
           onSubmit={handleSubmit}
-          onCancel={() => navigate({ to: "/" })}
+          onCancel={() => navigate({ to: "/dashboard" })}
           submitLabel="Save Changes"
           isSubmitting={isSubmitting}
         />

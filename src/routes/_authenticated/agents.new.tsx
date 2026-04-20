@@ -28,7 +28,7 @@ function NewAgentPage() {
     setIsSubmitting(true);
     try {
       await createAgent(values);
-      navigate({ to: "/" });
+      navigate({ to: "/dashboard" });
     } catch (err) {
       console.error("Failed to create agent:", err);
     } finally {
@@ -42,7 +42,7 @@ function NewAgentPage() {
       <div className="rounded-xl border border-border bg-card p-6">
         <AgentForm
           onSubmit={handleSubmit}
-          onCancel={() => navigate({ to: "/" })}
+          onCancel={() => navigate({ to: "/dashboard" })}
           submitLabel="Create Agent"
           isSubmitting={isSubmitting}
         />
