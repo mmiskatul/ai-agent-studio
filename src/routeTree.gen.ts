@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedAgentsNewRouteImport } from './routes/_authenticated/agents.new'
 import { Route as AuthenticatedAgentsAgentIdRouteImport } from './routes/_authenticated/agents.$agentId'
 import { Route as AuthenticatedAgentsAgentIdChatRouteImport } from './routes/_authenticated/agents.$agentId.chat'
@@ -48,6 +49,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedAgentsNewRoute = AuthenticatedAgentsNewRouteImport.update({
   id: '/agents/new',
   path: '/agents/new',
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
   '/agents/$agentId': typeof AuthenticatedAgentsAgentIdRouteWithChildren
   '/agents/new': typeof AuthenticatedAgentsNewRoute
   '/agents/$agentId/chat': typeof AuthenticatedAgentsAgentIdChatRoute
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
   '/agents/$agentId': typeof AuthenticatedAgentsAgentIdRouteWithChildren
   '/agents/new': typeof AuthenticatedAgentsNewRoute
   '/agents/$agentId/chat': typeof AuthenticatedAgentsAgentIdChatRoute
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/agents/$agentId': typeof AuthenticatedAgentsAgentIdRouteWithChildren
   '/_authenticated/agents/new': typeof AuthenticatedAgentsNewRoute
   '/_authenticated/agents/$agentId/chat': typeof AuthenticatedAgentsAgentIdChatRoute
@@ -106,6 +115,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/reset-password'
+    | '/dashboard'
     | '/agents/$agentId'
     | '/agents/new'
     | '/agents/$agentId/chat'
@@ -116,6 +126,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/reset-password'
+    | '/dashboard'
     | '/agents/$agentId'
     | '/agents/new'
     | '/agents/$agentId/chat'
@@ -127,6 +138,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/reset-password'
+    | '/_authenticated/dashboard'
     | '/_authenticated/agents/$agentId'
     | '/_authenticated/agents/new'
     | '/_authenticated/agents/$agentId/chat'
@@ -185,6 +197,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/dashboard': {
+      id: '/_authenticated/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/agents/new': {
       id: '/_authenticated/agents/new'
       path: '/agents/new'
@@ -224,11 +243,13 @@ const AuthenticatedAgentsAgentIdRouteWithChildren =
   )
 
 interface AuthenticatedRouteChildren {
+  AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedAgentsAgentIdRoute: typeof AuthenticatedAgentsAgentIdRouteWithChildren
   AuthenticatedAgentsNewRoute: typeof AuthenticatedAgentsNewRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedAgentsAgentIdRoute: AuthenticatedAgentsAgentIdRouteWithChildren,
   AuthenticatedAgentsNewRoute: AuthenticatedAgentsNewRoute,
 }
