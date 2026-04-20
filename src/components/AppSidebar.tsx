@@ -9,8 +9,8 @@ export function AppSidebar() {
   const currentPath = location.pathname;
 
   const navItems = [
-    { label: "Dashboard", to: "/", icon: LayoutDashboard },
-    { label: "New Agent", to: "/agents/new", icon: Plus },
+    { label: "Dashboard", to: "/dashboard" as const, icon: LayoutDashboard },
+    { label: "New Agent", to: "/agents/new" as const, icon: Plus },
   ];
 
   return (
