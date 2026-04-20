@@ -15,8 +15,7 @@ function EmailValidationForm() {
   const { verifyEmail, verifyForgotPassword } = useAuth();
   const email = searchParams.get("email") ?? "";
   const mode = searchParams.get("mode") ?? "signup";
-  const devCode = searchParams.get("code") ?? "";
-  const [code, setCode] = useState(devCode);
+  const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 

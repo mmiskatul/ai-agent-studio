@@ -31,9 +31,6 @@ export default function ForgotPasswordPage() {
         email: response.email,
         mode: "forgot",
       });
-      if (response.dev_validation_code) {
-        params.set("code", response.dev_validation_code);
-      }
       router.replace(`/email-validation?${params.toString()}`);
       setSent(true);
     } catch (err) {

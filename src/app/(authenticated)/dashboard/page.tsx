@@ -2,19 +2,25 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Plus, Search, Bot } from "lucide-react";
-import { fetchAgents, deleteAgent, type Agent } from "@/lib/agent-api";
-import { AgentCard } from "@/components/AgentCard";
-import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
+import { Activity, Bot, CheckCircle2, Clock3, Filter, Search } from "lucide-react";
+import { fetchAgents, type Agent } from "@/lib/agent-api";
+import { AgentTestDrawer } from "@/components/AgentTestDrawer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 export default function DashboardPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [category, setCategory] = useState("All");
 
   async function loadAgents() {
     try {
@@ -31,90 +37,188 @@ export default function DashboardPage() {
     loadAgents();
   }, []);
 
-  async function handleDelete() {
-    if (!deleteTarget) return;
-    setIsDeleting(true);
-    try {
-      await deleteAgent(deleteTarget.id);
-      setAgents((prev) => prev.filter((a) => a.id !== deleteTarget.id));
-    } catch (err) {
-      console.error("Failed to delete agent:", err);
-    } finally {
-      setIsDeleting(false);
-      setDeleteTarget(null);
-    }
-  }
+  const categories = [
+    "All",
+    ...Array.from(
+      new Set(
+        agents
+          .map((agent) => agent.template_type)
+          .filter((templateType): templateType is string => Boolean(templateType)),
+      ),
+    ),
+  ];
+  const filtered = agents.filter((agent) => {
+    const query = search.toLowerCase();
+    const matchesSearch =
+      agent.name.toLowerCase().includes(query) ||
+      agent.role.toLowerCase().includes(query) ||
+      agent.purpose.toLowerCase().includes(query);
+    const matchesCategory = category === "All" || agent.template_type === category;
+    return matchesSearch && matchesCategory;
+  });
+  const totalAgents = agents.length;
+  const activeAgents = agents.filter((agent) => agent.status === "active").length;
+  const deactiveAgents = agents.filter((agent) => agent.status !== "active").length;
+  const recentlyUpdatedAgents = agents.filter((agent) => {
+    const updatedAt = new Date(agent.updated_at).getTime();
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    return Number.isFinite(updatedAt) && updatedAt >= sevenDaysAgo;
+  }).length;
 
-  const filtered = agents.filter((a) => a.name.toLowerCase().includes(search.toLowerCase()));
+  const stats = [
+    {
+      label: "Total Agents",
+      value: totalAgents,
+      description: "All agents created",
+      icon: Bot,
+    },
+    {
+      label: "Active Agents",
+      value: activeAgents,
+      description: "Ready for chat",
+      icon: CheckCircle2,
+    },
+    {
+      label: "Deactive Agents",
+      value: deactiveAgents,
+      description: "Currently paused",
+      icon: Clock3,
+    },
+    {
+      label: "Recently Updated",
+      value: recentlyUpdatedAgents,
+      description: "Changed in last 7 days",
+      icon: Activity,
+    },
+  ];
+  const topAgents = [...agents]
+    .sort((a, b) => {
+      const statusScore = Number(b.status === "active") - Number(a.status === "active");
+      if (statusScore !== 0) return statusScore;
+      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    })
+    .slice(0, 5);
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="mx-auto w-full max-w-7xl p-6">
+      <AgentTestDrawer />
+
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">My Agents</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Create and manage your AI agents</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Overview</h1>
+          <p className="mt-2 text-sm font-medium text-muted-foreground">
+            Monitor agent activity, status, and recent workspace changes.
+          </p>
         </div>
-        <Link href="/agents/new">
-          <Button className="gap-2">
-            <Plus className="h-4 w-4" />
-            New Agent
+
+        <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search agents..."
+              className="h-10 rounded-lg bg-card pl-10"
+            />
+          </div>
+          <Button variant="outline" className="h-10 gap-2 rounded-lg bg-card">
+            <Filter className="h-4 w-4" />
+            Filter
           </Button>
-        </Link>
+        </div>
       </div>
 
-      {agents.length > 0 && (
-        <div className="relative mb-6 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search agents..."
-            className="pl-10"
-          />
+      <div className="mb-6 flex flex-wrap gap-2">
+        {categories.map((item) => (
+          <Button
+            key={item}
+            type="button"
+            size="sm"
+            variant={category === item ? "default" : "outline"}
+            className="rounded-lg px-4 capitalize"
+            onClick={() => setCategory(item)}
+          >
+            {item}
+          </Button>
+        ))}
+      </div>
+
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {stats.map((stat) => (
+          <div key={stat.label} className="agent-card flex items-center gap-4 p-5">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+              <stat.icon className="h-5 w-5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
+              <p className="mt-1 text-2xl font-bold text-foreground">{stat.value}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{stat.description}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="agent-card mb-8 overflow-hidden">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div>
+            <h2 className="text-lg font-bold text-foreground">Top agents for you</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Active and recently updated agents ranked first
+            </p>
+          </div>
         </div>
-      )}
+
+        {topAgents.length === 0 ? (
+          <div className="px-5 py-10 text-center text-sm text-muted-foreground">
+            Create agents to see recommendations here.
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="px-5">Agent</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {topAgents.map((agent) => (
+                <TableRow key={agent.id}>
+                  <TableCell className="px-5 font-medium text-foreground">{agent.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{agent.role}</TableCell>
+                  <TableCell>
+                    <span
+                      className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${
+                        agent.status === "active"
+                          ? "bg-success/10 text-success"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {agent.status}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {agent.template_type ?? "Custom"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Link href={`/agents/${agent.id}/chat`}>
+                      <Button size="sm">Chat</Button>
+                    </Link>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         </div>
-      ) : agents.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
-          <Bot className="mb-3 h-12 w-12 text-muted-foreground/40" />
-          <h2 className="text-lg font-semibold text-foreground">No agents yet</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Create your first AI agent to get started
-          </p>
-          <Link href="/agents/new">
-            <Button className="mt-4 gap-2">
-              <Plus className="h-4 w-4" />
-              Create Agent
-            </Button>
-          </Link>
-        </div>
-      ) : filtered.length === 0 ? (
-        <p className="py-10 text-center text-sm text-muted-foreground">
-          No agents match your search
-        </p>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((agent) => (
-            <AgentCard
-              key={agent.id}
-              agent={agent}
-              onDelete={(id) => setDeleteTarget(agents.find((a) => a.id === id) || null)}
-            />
-          ))}
-        </div>
-      )}
-
-      <DeleteConfirmModal
-        open={!!deleteTarget}
-        agentName={deleteTarget?.name ?? ""}
-        onConfirm={handleDelete}
-        onCancel={() => setDeleteTarget(null)}
-        isDeleting={isDeleting}
-      />
+      ) : null}
     </div>
   );
 }

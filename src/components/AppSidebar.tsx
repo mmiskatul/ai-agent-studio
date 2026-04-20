@@ -2,7 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, LayoutDashboard, LogOut, Plus } from "lucide-react";
+import {
+  Bot,
+  Bell,
+  CircleUserRound,
+  Compass,
+  LayoutDashboard,
+  LogOut,
+  MessageCircle,
+  Users,
+} from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 
@@ -12,7 +21,11 @@ export function AppSidebar() {
 
   const navItems = [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { label: "New Agent", href: "/agents/new", icon: Plus },
+    { label: "Explore Agents", href: "/explore-agents", icon: Compass },
+    { label: "Chat", href: "/create-chat", icon: MessageCircle },
+    { label: "Agents", href: "/agents", icon: Users },
+    { label: "Notifications", href: "/notifications", icon: Bell },
+    { label: "Profile", href: "/profile", icon: CircleUserRound },
   ];
 
   return (
@@ -36,7 +49,7 @@ export function AppSidebar() {
               }`}
             >
               <item.icon className="h-4 w-4" />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
             </Link>
           );
         })}

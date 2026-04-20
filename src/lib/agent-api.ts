@@ -27,6 +27,13 @@ export interface Message {
   created_at: string;
 }
 
+export interface ChatAgent {
+  agent: Agent;
+  chat: Chat;
+  last_message: Message;
+  message_count: number;
+}
+
 const AGENTS_STORAGE_KEY = "agenthub.agents";
 const CHATS_STORAGE_KEY = "agenthub.chats";
 const MESSAGES_STORAGE_KEY = "agenthub.messages";
@@ -74,6 +81,26 @@ export async function fetchAgent(id: string) {
   const agent = readCollection<Agent>(AGENTS_STORAGE_KEY).find((agent) => agent.id === id);
   if (!agent) throw new Error("Agent not found");
   return agent;
+}
+
+export async function fetchAgentQueryCounts(days = 30) {
+  const chats = readCollection<Chat>(CHATS_STORAGE_KEY);
+  const messages = readCollection<Message>(MESSAGES_STORAGE_KEY);
+  const since = Date.now() - days * 24 * 60 * 60 * 1000;
+  const chatAgentMap = new Map(chats.map((chat) => [chat.id, chat.agent_id]));
+
+  return messages.reduce<Record<string, number>>((counts, message) => {
+    if (message.sender_type !== "user") return counts;
+
+    const createdAt = new Date(message.created_at).getTime();
+    if (!Number.isFinite(createdAt) || createdAt < since) return counts;
+
+    const agentId = chatAgentMap.get(message.chat_id);
+    if (!agentId) return counts;
+
+    counts[agentId] = (counts[agentId] ?? 0) + 1;
+    return counts;
+  }, {});
 }
 
 export async function createAgent(agent: AgentInsert) {
@@ -151,6 +178,32 @@ export async function fetchMessages(chatId: string) {
   return readCollection<Message>(MESSAGES_STORAGE_KEY)
     .filter((message) => message.chat_id === chatId)
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+export async function fetchChatAgents() {
+  const agents = readCollection<Agent>(AGENTS_STORAGE_KEY);
+  const chats = readCollection<Chat>(CHATS_STORAGE_KEY);
+  const messages = readCollection<Message>(MESSAGES_STORAGE_KEY);
+
+  return chats
+    .map((chat) => {
+      const agent = agents.find((item) => item.id === chat.agent_id);
+      const chatMessages = messages
+        .filter((message) => message.chat_id === chat.id)
+        .sort((a, b) => a.created_at.localeCompare(b.created_at));
+      const lastMessage = chatMessages.at(-1);
+
+      if (!agent || !lastMessage) return null;
+
+      return {
+        agent,
+        chat,
+        last_message: lastMessage,
+        message_count: chatMessages.length,
+      };
+    })
+    .filter((item): item is ChatAgent => item !== null)
+    .sort((a, b) => b.last_message.created_at.localeCompare(a.last_message.created_at));
 }
 
 export async function addMessage(

@@ -16,7 +16,6 @@ interface AuthSession {
 interface EmailValidationResponse {
   email: string;
   message: string;
-  dev_validation_code?: string | null;
 }
 
 interface TokenResponse {

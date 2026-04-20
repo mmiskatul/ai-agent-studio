@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { AGENT_TEMPLATES, type AgentTemplate } from "@/lib/templates";
 
 interface AgentFormProps {
   initialValues?: {
@@ -42,14 +41,6 @@ export function AgentForm({
   const [status, setStatus] = useState(initialValues?.status ?? "active");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  function applyTemplate(template: AgentTemplate) {
-    setTemplateType(template.id);
-    setName(template.name);
-    setRole(template.role);
-    setPurpose(template.purpose);
-    setSystemPrompt(template.systemPrompt);
-  }
-
   function validate() {
     const errs: Record<string, string> = {};
     if (!name.trim()) errs.name = "Agent name is required";
@@ -75,28 +66,6 @@ export function AgentForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div>
-        <Label className="mb-2 block text-sm font-medium">Start from a template</Label>
-        <div className="flex flex-wrap gap-2">
-          {AGENT_TEMPLATES.map((t) => (
-            <Button
-              key={t.id}
-              type="button"
-              variant={templateType === t.id ? "default" : "outline"}
-              size="sm"
-              onClick={() => applyTemplate(t)}
-            >
-              {t.label}
-            </Button>
-          ))}
-          {templateType && (
-            <Button type="button" variant="ghost" size="sm" onClick={() => setTemplateType("")}>
-              Clear
-            </Button>
-          )}
-        </div>
-      </div>
-
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <Label htmlFor="name">Agent Name *</Label>

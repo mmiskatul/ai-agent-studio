@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Bot } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { AUTHENTICATED_HOME } from "@/lib/routes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,9 +40,6 @@ export default function RegisterPage() {
         email: response.email,
         mode: "signup",
       });
-      if (response.dev_validation_code) {
-        params.set("code", response.dev_validation_code);
-      }
       router.replace(`/email-validation?${params.toString()}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to create account");
