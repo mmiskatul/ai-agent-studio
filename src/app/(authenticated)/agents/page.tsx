@@ -7,6 +7,7 @@ import {
   deleteBackendAgent,
   fetchBackendAgent,
   fetchBackendAgents,
+  isAgentActive,
   updateBackendAgent,
   type Agent,
   type AgentUpdate,
@@ -30,7 +31,6 @@ import {
 export default function AgentsPage() {
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [queryCounts, setQueryCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -56,7 +56,6 @@ export default function AgentsPage() {
         setError("");
         const data = await fetchBackendAgents(accessToken, refreshAccessToken);
         setAgents(data);
-        setQueryCounts({});
       } catch (err) {
         console.error("Failed to load agents:", err);
         setError(err instanceof Error ? err.message : "Failed to load agents");
@@ -109,11 +108,6 @@ export default function AgentsPage() {
     try {
       await deleteBackendAgent(deleteTarget.id, accessToken, refreshAccessToken);
       setAgents((prev) => prev.filter((agent) => agent.id !== deleteTarget.id));
-      setQueryCounts((prev) => {
-        const next = { ...prev };
-        delete next[deleteTarget.id];
-        return next;
-      });
     } catch (err) {
       console.error("Failed to delete agent:", err);
     } finally {
@@ -229,7 +223,7 @@ export default function AgentsPage() {
                     </span>
                   </TableCell>
                   <TableCell className="font-medium text-foreground">
-                    {queryCounts[agent.id] ?? 0}
+                    {agent.queries_30d ?? 0}
                   </TableCell>
                   <TableCell className="px-5">
                     <div className="flex justify-end gap-2">
@@ -246,7 +240,14 @@ export default function AgentsPage() {
                       <Button
                         size="sm"
                         className="gap-1.5"
+                        disabled={!isAgentActive(agent)}
+                        title={
+                          isAgentActive(agent)
+                            ? "Test this agent"
+                            : "Activate this agent before testing chat"
+                        }
                         onClick={() => {
+                          if (!isAgentActive(agent)) return;
                           setTestAgentId(agent.id);
                           setShowTestingDrawer(true);
                         }}

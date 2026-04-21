@@ -283,8 +283,8 @@ export default function NewAgentPage() {
                   value={purpose}
                   onChange={(event) => setPurpose(event.target.value)}
                   placeholder="What does this agent do?"
-                  rows={3}
-                  className="mt-2 resize-none rounded-lg bg-card"
+                  rows={5}
+                  className="mt-2 rounded-lg bg-card"
                 />
               </div>
 

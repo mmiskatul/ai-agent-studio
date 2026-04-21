@@ -4,15 +4,15 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Bot } from "lucide-react";
 import {
-  addMessage,
-  fetchAgent,
-  fetchAgents,
-  fetchMessages,
-  getOrCreateChat,
+  fetchBackendAgent,
+  fetchBackendAgents,
+  fetchBackendMessages,
+  isAgentActive,
+  sendBackendMessage,
   type Agent,
   type Message,
 } from "@/lib/agent-api";
-import { streamChat } from "@/lib/chat-stream";
+import { useAuth } from "@/hooks/use-auth";
 import { ChatInterface } from "@/components/ChatInterface";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,91 +37,83 @@ export function AgentTestDrawer({
   onOpenChange,
   showTrigger = true,
 }: AgentTestDrawerProps) {
+  const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
   const [agent, setAgent] = useState<Agent | null>(null);
-  const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [streamingContent, setStreamingContent] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (authLoading) return;
+
     async function loadTestingChat() {
       setLoading(true);
       setError(null);
       setAgent(null);
-      setChatId(null);
       setMessages([]);
-      setStreamingContent("");
       setIsStreaming(false);
+
+      if (!accessToken) {
+        setError("Sign in again to test agents.");
+        setLoading(false);
+        return;
+      }
 
       try {
         const selectedAgent = agentId
-          ? await fetchAgent(agentId)
-          : await fetchAgents().then(
-              (agents) => agents.find((item) => item.status === "active") ?? agents[0] ?? null,
+          ? await fetchBackendAgent(agentId, accessToken, refreshAccessToken)
+          : await fetchBackendAgents(accessToken, refreshAccessToken).then(
+              (agents) => agents.find(isAgentActive) ?? null,
             );
 
-        if (!selectedAgent) {
+        if (!selectedAgent || !isAgentActive(selectedAgent)) {
           setAgent(null);
+          setError("No active agent is available for testing chat.");
           return;
         }
 
         setAgent(selectedAgent);
-        const chat = await getOrCreateChat(selectedAgent.id);
-        setChatId(chat.id);
-        const storedMessages = await fetchMessages(chat.id);
+        const storedMessages = await fetchBackendMessages(
+          selectedAgent.id,
+          accessToken,
+          refreshAccessToken,
+        );
         setMessages(storedMessages);
       } catch (err) {
         console.error("Failed to load testing chat:", err);
-        setError("Failed to load testing chat");
+        setError(err instanceof Error ? err.message : "Failed to load testing chat");
       } finally {
         setLoading(false);
       }
     }
 
     loadTestingChat();
-  }, [agentId]);
+  }, [accessToken, agentId, authLoading, refreshAccessToken]);
 
   const handleSend = useCallback(
     async (content: string) => {
-      if (!agent || !chatId) return;
+      if (!agent || !accessToken) return;
 
       setError(null);
-      const userMessage = await addMessage(chatId, "user", content);
-      const nextMessages = [...messages, userMessage];
-      setMessages(nextMessages);
       setIsStreaming(true);
-      setStreamingContent("");
 
-      let fullResponse = "";
-
-      await streamChat({
-        messages: nextMessages.map((message) => ({
-          sender_type: message.sender_type,
-          content: message.content,
-        })),
-        systemPrompt: agent.system_prompt,
-        onDelta: (delta) => {
-          fullResponse += delta;
-          setStreamingContent(fullResponse);
-        },
-        onDone: async () => {
-          if (fullResponse) {
-            const assistantMessage = await addMessage(chatId, "assistant", fullResponse);
-            setMessages((prev) => [...prev, assistantMessage]);
-          }
-          setStreamingContent("");
-          setIsStreaming(false);
-        },
-        onError: (errorMessage) => {
-          setError(errorMessage);
-          setStreamingContent("");
-          setIsStreaming(false);
-        },
-      });
+      try {
+        const response = await sendBackendMessage(
+          agent.id,
+          content,
+          accessToken,
+          refreshAccessToken,
+        );
+        setMessages((prev) => [...prev, response.user_message, response.assistant_message]);
+      } catch (err) {
+        console.error("Failed to send testing message:", err);
+        setError(err instanceof Error ? err.message : "Failed to send message");
+      } finally {
+        setIsStreaming(false);
+      }
     },
-    [agent, chatId, messages],
+    [accessToken, agent, refreshAccessToken],
   );
 
   return (
@@ -150,7 +142,7 @@ export function AgentTestDrawer({
               messages={messages}
               onSend={handleSend}
               isLoading={isStreaming}
-              streamingContent={streamingContent}
+              streamingContent=""
               error={error}
             />
           ) : (
@@ -158,7 +150,7 @@ export function AgentTestDrawer({
               <Bot className="mb-3 h-10 w-10 text-muted-foreground/40" />
               <h3 className="text-base font-bold text-foreground">No agent available</h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                Create an agent before testing chat from the drawer.
+                Activate an agent before testing chat from the drawer.
               </p>
               <Link href="/agents/new">
                 <Button className="mt-4">Create Agent</Button>

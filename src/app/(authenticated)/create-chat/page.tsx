@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BriefcaseBusiness, MessageSquare, Plus, Send } from "lucide-react";
-import { fetchBackendAgents, type Agent } from "@/lib/agent-api";
+import { fetchBackendAgents, isAgentActive, type Agent } from "@/lib/agent-api";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,7 +39,7 @@ export default function CreateChatPage() {
       try {
         setError("");
         const data = await fetchBackendAgents(accessToken, refreshAccessToken);
-        setAgents(data);
+        setAgents(data.filter(isAgentActive));
       } catch (err) {
         console.error("Failed to load agents:", err);
         setError(err instanceof Error ? err.message : "Failed to load agents");
@@ -90,9 +90,9 @@ export default function CreateChatPage() {
           ) : agents.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center px-4 text-center">
               <MessageSquare className="mb-3 h-10 w-10 text-muted-foreground/40" />
-              <p className="text-sm font-medium text-foreground">No agents created</p>
+              <p className="text-sm font-medium text-foreground">No active agents available</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Create an agent before starting a chat.
+                Activate an agent before starting a chat.
               </p>
             </div>
           ) : (

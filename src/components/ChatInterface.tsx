@@ -33,6 +33,9 @@ export function ChatInterface({
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const welcomeMessage =
+    agent.welcome_message?.trim() ||
+    `Hi, I'm ${agent.name}. I can help with ${agent.purpose}. Share what you need, and I'll guide you through the next best steps.`;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -58,6 +61,11 @@ export function ChatInterface({
   function submitEditing(messageId: string) {
     const nextContent = editingContent.trim();
     if (!nextContent || !onEditMessage) return;
+    const currentMessage = messages.find((message) => message.id === messageId);
+    if (currentMessage && nextContent === currentMessage.content.trim()) {
+      cancelEditing();
+      return;
+    }
     onEditMessage(messageId, nextContent);
     cancelEditing();
   }
@@ -90,18 +98,21 @@ export function ChatInterface({
           </div>
         )}
 
-        {messages.length === 0 && !streamingContent && (
-          <div className="flex items-start gap-3">
+        <div className="w-full space-y-4">
+          <div className="flex justify-start gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
               <Bot className="h-4 w-4" />
             </div>
-            <div className="max-w-md rounded-xl border border-border bg-card px-4 py-3 text-sm font-medium leading-6 text-foreground shadow-sm">
-              Hello! I&apos;m your AI assistant. How can I help you today?
+            <div className="flex max-w-[80%] flex-col gap-1">
+              <span className="text-xs font-semibold text-muted-foreground">{agent.name}</span>
+              <div className="chat-bubble-assistant px-4 py-2.5 text-sm">
+                <div className="prose prose-sm max-w-none">
+                  <ReactMarkdown>{welcomeMessage}</ReactMarkdown>
+                </div>
+              </div>
             </div>
           </div>
-        )}
 
-        <div className="mx-auto max-w-2xl space-y-4">
           {messages.map((msg) => (
             <div
               key={msg.id}
@@ -113,6 +124,13 @@ export function ChatInterface({
                 </div>
               )}
               <div className="group flex max-w-[80%] flex-col gap-1">
+                <span
+                  className={`text-xs font-semibold text-muted-foreground ${
+                    msg.sender_type === "user" ? "text-right" : "text-left"
+                  }`}
+                >
+                  {msg.sender_type === "user" ? "You" : agent.name}
+                </span>
                 <div
                   className={`px-4 py-2.5 text-sm ${
                     msg.sender_type === "user" ? "chat-bubble-user" : "chat-bubble-assistant"
@@ -211,9 +229,12 @@ export function ChatInterface({
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
                 <Bot className="h-4 w-4" />
               </div>
-              <div className="chat-bubble-assistant max-w-[80%] px-4 py-2.5 text-sm">
-                <div className="prose prose-sm max-w-none">
-                  <ReactMarkdown>{streamingContent}</ReactMarkdown>
+              <div className="flex max-w-[80%] flex-col gap-1">
+                <span className="text-xs font-semibold text-muted-foreground">{agent.name}</span>
+                <div className="chat-bubble-assistant px-4 py-2.5 text-sm">
+                  <div className="prose prose-sm max-w-none">
+                    <ReactMarkdown>{streamingContent}</ReactMarkdown>
+                  </div>
                 </div>
               </div>
             </div>

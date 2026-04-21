@@ -4,14 +4,20 @@ export interface Agent {
   name: string;
   role: string;
   purpose: string;
+  description?: string | null;
   template_type: string | null;
   system_prompt: string;
+  welcome_message?: string | null;
   status: string;
+  queries_30d?: number;
+  tools?: string[];
+  model?: string | null;
+  is_active?: boolean;
   created_at: string;
   updated_at: string;
 }
 
-export type AgentInsert = Omit<Agent, "id" | "created_at" | "updated_at">;
+export type AgentInsert = Omit<Agent, "id" | "queries_30d" | "created_at" | "updated_at">;
 export type AgentUpdate = Partial<AgentInsert>;
 
 export interface Chat {
@@ -87,6 +93,10 @@ function normalizeChat(chat: Chat) {
     ...chat,
     id: chat.id || chat._id || "",
   };
+}
+
+export function isAgentActive(agent: Agent) {
+  return agent.status === "active" && agent.is_active !== false;
 }
 
 export async function fetchAgents() {
@@ -291,6 +301,33 @@ export async function createBackendChat(
 ) {
   return withBackendAuthRetry(
     (token) => createBackendChatRequest(agentId, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function deleteBackendChatRequest(agentId: string, chatId: string, accessToken: string) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}/chats/${chatId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || "Failed to delete chat");
+  }
+}
+
+export async function deleteBackendChat(
+  agentId: string,
+  chatId: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => deleteBackendChatRequest(agentId, chatId, token),
     accessToken,
     refreshAccessToken,
   );
@@ -703,7 +740,7 @@ export async function fetchChatAgents() {
         .sort((a, b) => a.created_at.localeCompare(b.created_at));
       const lastMessage = chatMessages.at(-1);
 
-      if (!agent || !lastMessage) return null;
+      if (!agent || !isAgentActive(agent) || !lastMessage) return null;
 
       return {
         agent,

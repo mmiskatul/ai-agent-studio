@@ -12,6 +12,10 @@ node_modules
 dist
 dist-ssr
 .output
+backend/
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
 .vinxi
 .tanstack/**
 .nitro

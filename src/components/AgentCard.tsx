@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Bot, MessageSquare, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { Agent } from "@/lib/agent-api";
+import { isAgentActive, type Agent } from "@/lib/agent-api";
 
 interface AgentCardProps {
   agent: Agent;
@@ -9,6 +9,8 @@ interface AgentCardProps {
 }
 
 export function AgentCard({ agent, onDelete }: AgentCardProps) {
+  const active = isAgentActive(agent);
+
   return (
     <div className="agent-card flex flex-col gap-3 p-5">
       <div className="flex items-start justify-between">
@@ -41,8 +43,15 @@ export function AgentCard({ agent, onDelete }: AgentCardProps) {
       )}
 
       <div className="flex items-center gap-2 border-t border-border pt-3">
-        <Link href={`/agents/${agent.id}/chat`} className="flex-1">
-          <Button variant="default" size="sm" className="w-full gap-2">
+        <Link
+          href={active ? `/agents/${agent.id}/chat` : "#"}
+          className="flex-1"
+          aria-disabled={!active}
+          onClick={(event) => {
+            if (!active) event.preventDefault();
+          }}
+        >
+          <Button variant="default" size="sm" className="w-full gap-2" disabled={!active}>
             <MessageSquare className="h-3.5 w-3.5" />
             Chat
           </Button>

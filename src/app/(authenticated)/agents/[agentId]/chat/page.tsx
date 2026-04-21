@@ -2,9 +2,10 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, MessageSquare, Plus } from "lucide-react";
+import { Loader2, MessageSquare, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import {
   createBackendChat,
+  deleteBackendChat,
   fetchBackendAgent,
   fetchBackendAgents,
   fetchBackendChatMessages,
@@ -12,6 +13,7 @@ import {
   deleteBackendChatMessage,
   sendBackendChatMessage,
   updateBackendChatMessage,
+  isAgentActive,
   type Agent,
   type Chat,
   type Message,
@@ -28,6 +30,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 function ChatSkeleton() {
   return (
@@ -131,20 +149,9 @@ export default function ChatPage() {
   const [isLoadingChat, setIsLoadingChat] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [messageActionId, setMessageActionId] = useState<string | null>(null);
+  const [chatPendingDelete, setChatPendingDelete] = useState<Chat | null>(null);
+  const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const applyChatTitle = useCallback((chatId: string, content: string) => {
-    const title = content.trim().replace(/\s+/g, " ").slice(0, 80);
-    if (!title) return;
-
-    setActiveChat((prev) => {
-      if (!prev || prev.id !== chatId || prev.title) return prev;
-      return { ...prev, title };
-    });
-    setChats((prev) =>
-      prev.map((chat) => (chat.id === chatId && !chat.title ? { ...chat, title } : chat)),
-    );
-  }, []);
 
   const setChatTitle = useCallback((chatId: string, content: string) => {
     const title = content.trim().replace(/\s+/g, " ").slice(0, 80);
@@ -158,10 +165,12 @@ export default function ChatPage() {
     async (selectedAgentId: string, updateUrl = false) => {
       if (!accessToken) return;
 
-      const [agentData, chatList] = await Promise.all([
-        fetchBackendAgent(selectedAgentId, accessToken, refreshAccessToken),
-        fetchBackendChats(selectedAgentId, accessToken, refreshAccessToken),
-      ]);
+      const agentData = await fetchBackendAgent(selectedAgentId, accessToken, refreshAccessToken);
+      if (!isAgentActive(agentData)) {
+        throw new Error("This agent is inactive and cannot be used for chat.");
+      }
+
+      const chatList = await fetchBackendChats(selectedAgentId, accessToken, refreshAccessToken);
 
       const selectedChat =
         chatList[0] ?? (await createBackendChat(selectedAgentId, accessToken, refreshAccessToken));
@@ -198,10 +207,8 @@ export default function ChatPage() {
 
       try {
         setError(null);
-        const [agentList] = await Promise.all([
-          fetchBackendAgents(accessToken, refreshAccessToken),
-        ]);
-        setAgents(agentList);
+        const agentList = await fetchBackendAgents(accessToken, refreshAccessToken);
+        setAgents(agentList.filter(isAgentActive));
         await loadAgentWorkspace(agentId);
       } catch (err) {
         console.error("Failed to load chat:", err);
@@ -275,6 +282,46 @@ export default function ChatPage() {
     [accessToken, activeChat?.id, agent, refreshAccessToken],
   );
 
+  const handleDeleteChat = useCallback(async () => {
+    if (!agent || !chatPendingDelete || !accessToken) return;
+
+    setError(null);
+    setDeletingChatId(chatPendingDelete.id);
+
+    try {
+      await deleteBackendChat(agent.id, chatPendingDelete.id, accessToken, refreshAccessToken);
+      const remainingChats = chats.filter((chat) => chat.id !== chatPendingDelete.id);
+      setChats(remainingChats);
+      setChatPendingDelete(null);
+
+      if (activeChat?.id !== chatPendingDelete.id) {
+        return;
+      }
+
+      const nextChat = remainingChats[0] ?? null;
+      setActiveChat(nextChat);
+      if (!nextChat) {
+        setMessages([]);
+        return;
+      }
+
+      setIsLoadingChat(true);
+      const messageList = await fetchBackendChatMessages(
+        agent.id,
+        nextChat.id,
+        accessToken,
+        refreshAccessToken,
+      );
+      setMessages(mergeMessagesById(messageList));
+    } catch (err) {
+      console.error("Failed to delete chat:", err);
+      setError(err instanceof Error ? err.message : "Failed to delete chat");
+    } finally {
+      setIsLoadingChat(false);
+      setDeletingChatId(null);
+    }
+  }, [accessToken, activeChat?.id, agent, chatPendingDelete, chats, refreshAccessToken]);
+
   const handleSend = useCallback(
     async (content: string) => {
       if (!agent || !accessToken) return;
@@ -298,7 +345,7 @@ export default function ChatPage() {
         setMessages((prev) =>
           mergeMessagesById([...prev, response.user_message, response.assistant_message]),
         );
-        applyChatTitle(chat.id, content);
+        setChatTitle(chat.id, content);
       } catch (err) {
         console.error("Failed to send message:", err);
         setError(err instanceof Error ? err.message : "Failed to send message");
@@ -306,7 +353,7 @@ export default function ChatPage() {
         setIsStreaming(false);
       }
     },
-    [accessToken, activeChat, agent, applyChatTitle, refreshAccessToken],
+    [accessToken, activeChat, agent, refreshAccessToken, setChatTitle],
   );
 
   const handleDeleteMessage = useCallback(
@@ -393,7 +440,7 @@ export default function ChatPage() {
   if (!agent) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4">
-        <p className="text-muted-foreground">Agent not found</p>
+        <p className="text-muted-foreground">{error || "Agent not found"}</p>
         <Button variant="outline" onClick={() => router.push(AUTHENTICATED_HOME)}>
           Back to Dashboard
         </Button>
@@ -464,36 +511,67 @@ export default function ChatPage() {
           ) : (
             <div className="space-y-2">
               {chats.map((chat) => (
-                <button
+                <div
                   key={chat.id}
-                  type="button"
-                  onClick={() => handleSelectChat(chat)}
-                  className={`flex w-full items-start gap-3 rounded-lg p-3 text-left transition-colors ${
+                  className={`group flex items-start gap-3 rounded-lg p-3 transition-colors ${
                     chat.id === activeChat?.id
                       ? "bg-primary/10 text-primary"
                       : "text-sidebar-foreground hover:bg-sidebar-accent"
                   }`}
                 >
-                  <div
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-                      chat.id === activeChat?.id
-                        ? "bg-primary text-primary-foreground"
-                        : "border border-border bg-background text-muted-foreground"
-                    }`}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectChat(chat)}
+                    className="flex min-w-0 flex-1 items-start gap-3 text-left"
                   >
-                    <MessageSquare className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-bold text-foreground">
-                        {chat.title || "New chat"}
+                    <div
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                        chat.id === activeChat?.id
+                          ? "bg-primary text-primary-foreground"
+                          : "border border-border bg-background text-muted-foreground"
+                      }`}
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate text-sm font-bold text-foreground">
+                          {chat.title || "New chat"}
+                        </p>
+                      </div>
+                      <p className="mt-1 line-clamp-1 text-xs font-medium text-muted-foreground">
+                        {chat.title ? agent.name : "Ask the first question"}
                       </p>
                     </div>
-                    <p className="mt-1 line-clamp-1 text-xs font-medium text-muted-foreground">
-                      {chat.title ? agent.name : "Ask the first question"}
-                    </p>
-                  </div>
-                </button>
+                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+                        disabled={deletingChatId === chat.id}
+                        aria-label="Chat actions"
+                      >
+                        {deletingChatId === chat.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <MoreHorizontal className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-40">
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onSelect={() => setChatPendingDelete(chat)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete chat
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               ))}
             </div>
           )}
@@ -518,6 +596,51 @@ export default function ChatPage() {
           />
         )}
       </main>
+
+      <AlertDialog
+        open={Boolean(chatPendingDelete)}
+        onOpenChange={(open) => {
+          if (!open && !deletingChatId) {
+            setChatPendingDelete(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete chat?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete{" "}
+              <span className="font-medium text-foreground">
+                {chatPendingDelete?.title || "this chat"}
+              </span>{" "}
+              and all messages inside it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={Boolean(deletingChatId)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                handleDeleteChat();
+              }}
+              disabled={Boolean(deletingChatId)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingChatId ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Deleting
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4" />
+                  Delete chat
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

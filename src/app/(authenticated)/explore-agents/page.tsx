@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowUpRight, Bot, BriefcaseBusiness, Filter, Search } from "lucide-react";
-import { fetchBackendAgents, type Agent } from "@/lib/agent-api";
+import { fetchBackendAgents, isAgentActive, type Agent } from "@/lib/agent-api";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +35,7 @@ export default function ExploreAgentsPage() {
       try {
         setError("");
         const data = await fetchBackendAgents(accessToken, refreshAccessToken);
-        setAgents(data);
+        setAgents(data.filter(isAgentActive));
       } catch (err) {
         console.error("Failed to load agents:", err);
         setError(err instanceof Error ? err.message : "Failed to load agents");
@@ -118,9 +118,9 @@ export default function ExploreAgentsPage() {
       ) : agents.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 text-center">
           <Bot className="mb-3 h-12 w-12 text-muted-foreground/40" />
-          <h2 className="text-lg font-semibold text-foreground">No agents available</h2>
+          <h2 className="text-lg font-semibold text-foreground">No active agents available</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Create an agent before exploring workflows.
+            Activate an agent before exploring workflows.
           </p>
         </div>
       ) : filteredAgents.length === 0 ? (
