@@ -11,7 +11,7 @@ export interface CreateBuilderAgentInput {
   uploadDataSource?: File | null;
 }
 
-export async function createBuilderAgent(input: CreateBuilderAgentInput, accessToken: string) {
+function buildCreateBuilderAgentFormData(input: CreateBuilderAgentInput) {
   const formData = new FormData();
   formData.append("name", input.name);
   formData.append("short_description", input.shortDescription);
@@ -27,12 +27,16 @@ export async function createBuilderAgent(input: CreateBuilderAgentInput, accessT
     formData.append("upload_data_source", input.uploadDataSource);
   }
 
+  return formData;
+}
+
+async function postBuilderAgent(input: CreateBuilderAgentInput, accessToken: string) {
   const response = await fetch("/backend/api/v1/agents/builder/with-knowledge", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
-    body: formData,
+    body: buildCreateBuilderAgentFormData(input),
   });
 
   const body = await response.json().catch(() => ({}));
@@ -42,4 +46,34 @@ export async function createBuilderAgent(input: CreateBuilderAgentInput, accessT
   }
 
   return body;
+}
+
+export async function createBuilderAgent(
+  input: CreateBuilderAgentInput,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  try {
+    return await postBuilderAgent(input, accessToken);
+  } catch (error) {
+    if (!(error instanceof Error) || !refreshAccessToken) {
+      throw error;
+    }
+
+    const isUnauthorized =
+      error.message.toLowerCase().includes("invalid bearer token") ||
+      error.message.toLowerCase().includes("missing bearer token") ||
+      error.message.toLowerCase().includes("unauthorized");
+
+    if (!isUnauthorized) {
+      throw error;
+    }
+
+    const refreshedToken = await refreshAccessToken();
+    if (!refreshedToken) {
+      throw error;
+    }
+
+    return postBuilderAgent(input, refreshedToken);
+  }
 }

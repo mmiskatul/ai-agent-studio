@@ -38,7 +38,7 @@ const tabs = [
 
 export default function NewAgentPage() {
   const router = useRouter();
-  const { accessToken } = useAuth();
+  const { accessToken, refreshAccessToken } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -75,6 +75,7 @@ export default function NewAgentPage() {
           uploadDataSource,
         },
         accessToken,
+        refreshAccessToken,
       );
       router.push(AUTHENTICATED_HOME);
     } catch (err) {
