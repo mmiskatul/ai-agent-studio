@@ -1,5 +1,6 @@
 export interface Agent {
   id: string;
+  _id?: string;
   name: string;
   role: string;
   purpose: string;
@@ -15,8 +16,11 @@ export type AgentUpdate = Partial<AgentInsert>;
 
 export interface Chat {
   id: string;
+  _id?: string;
   agent_id: string;
+  title?: string | null;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface Message {
@@ -71,9 +75,515 @@ function writeCollection<T>(key: string, value: T[]) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
+function normalizeAgent(agent: Agent) {
+  return {
+    ...agent,
+    id: agent.id || agent._id || "",
+  };
+}
+
+function normalizeChat(chat: Chat) {
+  return {
+    ...chat,
+    id: chat.id || chat._id || "",
+  };
+}
+
 export async function fetchAgents() {
   return readCollection<Agent>(AGENTS_STORAGE_KEY).sort((a, b) =>
     b.created_at.localeCompare(a.created_at),
+  );
+}
+
+async function fetchBackendAgentsRequest(accessToken: string) {
+  const response = await fetch("/backend/api/v1/agents", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to load agents");
+  }
+
+  return (body as Agent[]).map(normalizeAgent).filter((agent) => agent.id);
+}
+
+async function withBackendAuthRetry<T>(
+  request: (accessToken: string) => Promise<T>,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  try {
+    return await request(accessToken);
+  } catch (error) {
+    if (!(error instanceof Error) || !refreshAccessToken) {
+      throw error;
+    }
+
+    const message = error.message.toLowerCase();
+    const isUnauthorized =
+      message.includes("invalid bearer token") ||
+      message.includes("missing bearer token") ||
+      message.includes("unauthorized");
+
+    if (!isUnauthorized) {
+      throw error;
+    }
+
+    const refreshedToken = await refreshAccessToken();
+    if (!refreshedToken) {
+      throw error;
+    }
+
+    return request(refreshedToken);
+  }
+}
+
+export async function fetchBackendAgents(
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(fetchBackendAgentsRequest, accessToken, refreshAccessToken);
+}
+
+async function fetchBackendAgentRequest(agentId: string, accessToken: string) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to load agent");
+  }
+
+  return normalizeAgent(body as Agent);
+}
+
+export async function fetchBackendAgent(
+  agentId: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => fetchBackendAgentRequest(agentId, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function updateBackendAgentRequest(
+  agentId: string,
+  updates: AgentUpdate,
+  accessToken: string,
+) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(updates),
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to update agent");
+  }
+
+  return body as Agent;
+}
+
+export async function updateBackendAgent(
+  agentId: string,
+  updates: AgentUpdate,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => updateBackendAgentRequest(agentId, updates, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function deleteBackendAgentRequest(agentId: string, accessToken: string) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || "Failed to delete agent");
+  }
+}
+
+export async function deleteBackendAgent(
+  agentId: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => deleteBackendAgentRequest(agentId, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function fetchBackendChatsRequest(agentId: string, accessToken: string) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}/chats`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to load chats");
+  }
+
+  return (body as Chat[]).map(normalizeChat).filter((chat) => chat.id);
+}
+
+export async function fetchBackendChats(
+  agentId: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => fetchBackendChatsRequest(agentId, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function createBackendChatRequest(agentId: string, accessToken: string) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}/chats`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to create chat");
+  }
+
+  return normalizeChat(body as Chat);
+}
+
+export async function createBackendChat(
+  agentId: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => createBackendChatRequest(agentId, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function fetchBackendMessagesRequest(agentId: string, accessToken: string) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}/chat/messages`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to load messages");
+  }
+
+  return body as Message[];
+}
+
+async function fetchBackendChatMessagesRequest(
+  agentId: string,
+  chatId: string,
+  accessToken: string,
+) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}/chats/${chatId}/messages`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to load messages");
+  }
+
+  return body as Message[];
+}
+
+export async function fetchBackendChatMessages(
+  agentId: string,
+  chatId: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => fetchBackendChatMessagesRequest(agentId, chatId, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+export async function fetchBackendMessages(
+  agentId: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => fetchBackendMessagesRequest(agentId, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function sendBackendMessageRequest(agentId: string, content: string, accessToken: string) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}/chat/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ content }),
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to send message");
+  }
+
+  return body as {
+    user_message: Message;
+    assistant_message: Message;
+  };
+}
+
+export async function sendBackendMessage(
+  agentId: string,
+  content: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => sendBackendMessageRequest(agentId, content, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function sendBackendChatMessageRequest(
+  agentId: string,
+  chatId: string,
+  content: string,
+  accessToken: string,
+) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}/chats/${chatId}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ content }),
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to send message");
+  }
+
+  return body as {
+    user_message: Message;
+    assistant_message: Message;
+  };
+}
+
+export async function sendBackendChatMessage(
+  agentId: string,
+  chatId: string,
+  content: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => sendBackendChatMessageRequest(agentId, chatId, content, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function updateBackendMessageRequest(
+  agentId: string,
+  messageId: string,
+  content: string,
+  accessToken: string,
+) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}/chat/messages/${messageId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ content }),
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to update message");
+  }
+
+  return body as {
+    user_message: Message;
+    assistant_message: Message;
+  };
+}
+
+export async function updateBackendMessage(
+  agentId: string,
+  messageId: string,
+  content: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => updateBackendMessageRequest(agentId, messageId, content, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function updateBackendChatMessageRequest(
+  agentId: string,
+  chatId: string,
+  messageId: string,
+  content: string,
+  accessToken: string,
+) {
+  const response = await fetch(
+    `/backend/api/v1/agents/${agentId}/chats/${chatId}/messages/${messageId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ content }),
+    },
+  );
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to update message");
+  }
+
+  return body as {
+    user_message: Message;
+    assistant_message: Message;
+  };
+}
+
+export async function updateBackendChatMessage(
+  agentId: string,
+  chatId: string,
+  messageId: string,
+  content: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => updateBackendChatMessageRequest(agentId, chatId, messageId, content, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function deleteBackendMessageRequest(
+  agentId: string,
+  messageId: string,
+  accessToken: string,
+) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}/chat/messages/${messageId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || "Failed to delete message");
+  }
+}
+
+export async function deleteBackendMessage(
+  agentId: string,
+  messageId: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => deleteBackendMessageRequest(agentId, messageId, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function deleteBackendChatMessageRequest(
+  agentId: string,
+  chatId: string,
+  messageId: string,
+  accessToken: string,
+) {
+  const response = await fetch(
+    `/backend/api/v1/agents/${agentId}/chats/${chatId}/messages/${messageId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || "Failed to delete message");
+  }
+}
+
+export async function deleteBackendChatMessage(
+  agentId: string,
+  chatId: string,
+  messageId: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => deleteBackendChatMessageRequest(agentId, chatId, messageId, token),
+    accessToken,
+    refreshAccessToken,
   );
 }
 

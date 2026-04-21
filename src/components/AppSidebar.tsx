@@ -22,7 +22,7 @@ export function AppSidebar() {
   const navItems = [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { label: "Explore Agents", href: "/explore-agents", icon: Compass },
-    { label: "Chat", href: "/create-chat", icon: MessageCircle },
+    { label: "Chat", href: "/agents/chat", icon: MessageCircle },
     { label: "Agents", href: "/agents", icon: Users },
     { label: "Notifications", href: "/notifications", icon: Bell },
     { label: "Profile", href: "/profile", icon: CircleUserRound },

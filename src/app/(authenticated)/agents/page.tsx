@@ -4,14 +4,14 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Bot, Filter, MessageSquare, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import {
-  deleteAgent,
-  fetchAgent,
-  fetchAgentQueryCounts,
-  fetchAgents,
-  updateAgent,
+  deleteBackendAgent,
+  fetchBackendAgent,
+  fetchBackendAgents,
+  updateBackendAgent,
   type Agent,
   type AgentUpdate,
 } from "@/lib/agent-api";
+import { useAuth } from "@/hooks/use-auth";
 import { AgentForm } from "@/components/AgentForm";
 import { AgentTestDrawer } from "@/components/AgentTestDrawer";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
@@ -27,23 +27,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-const demoAgent: Agent = {
-  id: "demo-agent",
-  name: "Sales Support Agent",
-  role: "Sales Assistant",
-  purpose: "Answers product questions and qualifies new customer leads.",
-  template_type: "Sales Playbook",
-  system_prompt:
-    "You are a sales support agent. Answer product questions clearly, qualify new leads, and recommend the next best action.",
-  status: "active",
-  created_at: new Date(0).toISOString(),
-  updated_at: new Date(0).toISOString(),
-};
-
 export default function AgentsPage() {
+  const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [queryCounts, setQueryCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [editTarget, setEditTarget] = useState<Agent | null>(null);
   const [loadingEditId, setLoadingEditId] = useState<string | null>(null);
@@ -54,30 +43,37 @@ export default function AgentsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
+    if (authLoading) return;
+
     async function loadAgents() {
+      if (!accessToken) {
+        setLoading(false);
+        setError("Sign in again to load your agents.");
+        return;
+      }
+
       try {
-        const [data, counts] = await Promise.all([fetchAgents(), fetchAgentQueryCounts(30)]);
+        setError("");
+        const data = await fetchBackendAgents(accessToken, refreshAccessToken);
         setAgents(data);
-        setQueryCounts(counts);
+        setQueryCounts({});
       } catch (err) {
         console.error("Failed to load agents:", err);
+        setError(err instanceof Error ? err.message : "Failed to load agents");
       } finally {
         setLoading(false);
       }
     }
 
     loadAgents();
-  }, []);
+  }, [accessToken, authLoading, refreshAccessToken]);
 
   async function handleOpenEdit(agentId: string) {
-    if (agentId === demoAgent.id) {
-      setEditTarget(demoAgent);
-      return;
-    }
+    if (!accessToken) return;
 
     setLoadingEditId(agentId);
     try {
-      const agent = await fetchAgent(agentId);
+      const agent = await fetchBackendAgent(agentId, accessToken, refreshAccessToken);
       setEditTarget(agent);
     } catch (err) {
       console.error("Failed to load agent for editing:", err);
@@ -87,16 +83,16 @@ export default function AgentsPage() {
   }
 
   async function handleUpdate(values: AgentUpdate) {
-    if (!editTarget) return;
-
-    if (editTarget.id === demoAgent.id) {
-      setEditTarget(null);
-      return;
-    }
+    if (!editTarget || !accessToken) return;
 
     setIsUpdating(true);
     try {
-      const updated = await updateAgent(editTarget.id, values);
+      const updated = await updateBackendAgent(
+        editTarget.id,
+        values,
+        accessToken,
+        refreshAccessToken,
+      );
       setAgents((prev) => prev.map((agent) => (agent.id === updated.id ? updated : agent)));
       setEditTarget(null);
     } catch (err) {
@@ -107,16 +103,11 @@ export default function AgentsPage() {
   }
 
   async function handleDelete() {
-    if (!deleteTarget) return;
-
-    if (deleteTarget.id === demoAgent.id) {
-      setDeleteTarget(null);
-      return;
-    }
+    if (!deleteTarget || !accessToken) return;
 
     setIsDeleting(true);
     try {
-      await deleteAgent(deleteTarget.id);
+      await deleteBackendAgent(deleteTarget.id, accessToken, refreshAccessToken);
       setAgents((prev) => prev.filter((agent) => agent.id !== deleteTarget.id));
       setQueryCounts((prev) => {
         const next = { ...prev };
@@ -139,8 +130,7 @@ export default function AgentsPage() {
       agent.purpose.toLowerCase().includes(query)
     );
   });
-  const visibleAgents = agents.length === 0 ? [demoAgent] : filteredAgents;
-  const isShowingDemoAgent = agents.length === 0;
+  const visibleAgents = filteredAgents;
 
   return (
     <div className="mx-auto w-full max-w-7xl p-6">
@@ -186,7 +176,19 @@ export default function AgentsPage() {
         <div className="flex items-center justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         </div>
-      ) : agents.length > 0 && filteredAgents.length === 0 ? (
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 text-center">
+          <Bot className="mb-3 h-12 w-12 text-muted-foreground/40" />
+          <h2 className="text-lg font-semibold text-foreground">Could not load agents</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+        </div>
+      ) : agents.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 text-center">
+          <Bot className="mb-3 h-12 w-12 text-muted-foreground/40" />
+          <h2 className="text-lg font-semibold text-foreground">No agents created</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Create an agent to manage it here.</p>
+        </div>
+      ) : filteredAgents.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">
           No agents match your search.
         </p>
@@ -197,7 +199,6 @@ export default function AgentsPage() {
               <TableRow>
                 <TableHead className="px-5">Agent</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Knowledge base</TableHead>
                 <TableHead>Queries (30D)</TableHead>
                 <TableHead className="px-5 text-right">Action</TableHead>
               </TableRow>
@@ -227,11 +228,8 @@ export default function AgentsPage() {
                       {agent.status}
                     </span>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {agent.template_type ?? "Custom"}
-                  </TableCell>
                   <TableCell className="font-medium text-foreground">
-                    {isShowingDemoAgent ? 128 : (queryCounts[agent.id] ?? 0)}
+                    {queryCounts[agent.id] ?? 0}
                   </TableCell>
                   <TableCell className="px-5">
                     <div className="flex justify-end gap-2">
@@ -249,7 +247,7 @@ export default function AgentsPage() {
                         size="sm"
                         className="gap-1.5"
                         onClick={() => {
-                          setTestAgentId(isShowingDemoAgent ? null : agent.id);
+                          setTestAgentId(agent.id);
                           setShowTestingDrawer(true);
                         }}
                       >

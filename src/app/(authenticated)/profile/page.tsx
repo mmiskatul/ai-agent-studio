@@ -203,7 +203,7 @@ export default function ProfilePage() {
               <p className="mt-1 text-sm text-muted-foreground">
                 Open an existing chat or choose an agent from the conversation selector.
               </p>
-              <Link href="/create-chat">
+              <Link href="/agents/chat">
                 <Button variant="outline" size="sm" className="mt-3">
                   Open Chat
                 </Button>

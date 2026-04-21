@@ -1,20 +1,24 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Bolt,
   BookOpen,
-  Database,
-  FileText,
   Save,
   Send,
   Settings2,
   SlidersHorizontal,
-  UploadCloud,
+  Sparkles,
   Zap,
 } from "lucide-react";
+import {
+  generateAgentDescription,
+  generateAgentSystemPrompt,
+  generateAgentWelcomeMessage,
+} from "@/lib/agent-generate-api";
 import { createBuilderAgent } from "@/lib/builder-agent-api";
+import { fetchLLMEngineOptions, type LLMEngineOption } from "@/lib/llm-engine-api";
 import { AUTHENTICATED_HOME } from "@/lib/routes";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
@@ -32,15 +36,16 @@ import {
 const tabs = [
   { label: "Setup", icon: SlidersHorizontal },
   { label: "Instructions", icon: BookOpen },
-  { label: "Knowledge", icon: Database },
   { label: "Advanced", icon: Bolt },
 ];
 
 export default function NewAgentPage() {
   const router = useRouter();
   const { accessToken, refreshAccessToken } = useAuth();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
+  const [isGeneratingSystemPrompt, setIsGeneratingSystemPrompt] = useState(false);
+  const [isGeneratingWelcomeMessage, setIsGeneratingWelcomeMessage] = useState(false);
   const [error, setError] = useState("");
   const [name, setName] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -49,12 +54,105 @@ export default function NewAgentPage() {
   const [systemPrompt, setSystemPrompt] = useState("");
   const [welcomeMessage, setWelcomeMessage] = useState("");
   const [activeTab, setActiveTab] = useState("Setup");
-  const [llmEngine, setLlmEngine] = useState("gpt-4o");
+  const [llmEngine, setLlmEngine] = useState("");
+  const [llmEngineOptions, setLlmEngineOptions] = useState<LLMEngineOption[]>([]);
   const [temperature, setTemperature] = useState(0.7);
-  const [uploadDataSource, setUploadDataSource] = useState<File | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadLLMEngines() {
+      try {
+        const data = await fetchLLMEngineOptions();
+        if (!isMounted) return;
+
+        setLlmEngineOptions(data.engines);
+        setLlmEngine(data.default_engine || data.engines[0]?.value || "");
+      } catch (err) {
+        console.error("Failed to load LLM engines:", err);
+      }
+    }
+
+    loadLLMEngines();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  async function handleGenerateDescription() {
+    if (!name.trim() || !accessToken) return;
+
+    setIsGeneratingDescription(true);
+    setError("");
+    try {
+      const generatedDescription = await generateAgentDescription(
+        name.trim(),
+        accessToken,
+        refreshAccessToken,
+      );
+      setPurpose(generatedDescription);
+    } catch (err) {
+      console.error("Failed to generate description:", err);
+      setError(err instanceof Error ? err.message : "Failed to generate description");
+    } finally {
+      setIsGeneratingDescription(false);
+    }
+  }
+
+  async function handleGenerateSystemPrompt() {
+    if (!name.trim() || !purpose.trim() || !accessToken) return;
+
+    setIsGeneratingSystemPrompt(true);
+    setError("");
+    try {
+      const generatedPrompt = await generateAgentSystemPrompt(
+        {
+          name: name.trim(),
+          shortDescription: purpose.trim(),
+          categoryTag: category.trim() || undefined,
+          baseTemplate: templateType,
+        },
+        accessToken,
+        refreshAccessToken,
+      );
+      setSystemPrompt(generatedPrompt);
+    } catch (err) {
+      console.error("Failed to generate system prompt:", err);
+      setError(err instanceof Error ? err.message : "Failed to generate system prompt");
+    } finally {
+      setIsGeneratingSystemPrompt(false);
+    }
+  }
+
+  async function handleGenerateWelcomeMessage() {
+    if (!name.trim() || !purpose.trim() || !accessToken) return;
+
+    setIsGeneratingWelcomeMessage(true);
+    setError("");
+    try {
+      const generatedMessage = await generateAgentWelcomeMessage(
+        {
+          name: name.trim(),
+          shortDescription: purpose.trim(),
+          categoryTag: category.trim() || undefined,
+          baseTemplate: templateType,
+        },
+        accessToken,
+        refreshAccessToken,
+      );
+      setWelcomeMessage(generatedMessage);
+    } catch (err) {
+      console.error("Failed to generate welcome message:", err);
+      setError(err instanceof Error ? err.message : "Failed to generate welcome message");
+    } finally {
+      setIsGeneratingWelcomeMessage(false);
+    }
+  }
 
   async function handleCreate(status: string) {
-    if (!name.trim() || !purpose.trim() || !accessToken) return;
+    const selectedLlmEngine = llmEngine || llmEngineOptions[0]?.value;
+    if (!name.trim() || !purpose.trim() || !accessToken || !selectedLlmEngine) return;
 
     setIsSubmitting(true);
     setError("");
@@ -69,10 +167,9 @@ export default function NewAgentPage() {
             systemPrompt.trim() ||
             `You are ${name.trim()}, an AI agent that helps with: ${purpose.trim()}`,
           welcomeMessage: welcomeMessage.trim() || undefined,
-          llmEngine,
+          llmEngine: selectedLlmEngine,
           temperature,
           status,
-          uploadDataSource,
         },
         accessToken,
         refreshAccessToken,
@@ -85,22 +182,6 @@ export default function NewAgentPage() {
       setIsSubmitting(false);
     }
   }
-
-  function handleFileChange(file: File | null) {
-    if (!file) return;
-    setUploadDataSource(file);
-  }
-
-  function clearUploadDataSource() {
-    setUploadDataSource(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }
-
-  const uploadDataSourceSize = uploadDataSource
-    ? `${(uploadDataSource.size / 1024 / 1024).toFixed(2)} MB`
-    : "";
 
   return (
     <div className="grid h-[calc(100vh-3.5rem)] lg:grid-cols-[minmax(0,1fr)_380px]">
@@ -178,9 +259,25 @@ export default function NewAgentPage() {
               </div>
 
               <div>
-                <Label htmlFor="agent-purpose" className="text-sm font-bold text-foreground">
-                  Short Description
-                </Label>
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="agent-purpose" className="text-sm font-bold text-foreground">
+                    Short Description
+                  </Label>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8 rounded-lg bg-card"
+                    title="Generate description"
+                    aria-label="Generate description"
+                    disabled={!name.trim() || !accessToken || isGeneratingDescription}
+                    onClick={handleGenerateDescription}
+                  >
+                    <Sparkles
+                      className={`h-4 w-4 ${isGeneratingDescription ? "animate-pulse" : ""}`}
+                    />
+                  </Button>
+                </div>
                 <Textarea
                   id="agent-purpose"
                   value={purpose}
@@ -231,9 +328,27 @@ export default function NewAgentPage() {
               </div>
 
               <div>
-                <Label htmlFor="system-prompt" className="text-sm font-bold text-foreground">
-                  System Prompt
-                </Label>
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="system-prompt" className="text-sm font-bold text-foreground">
+                    System Prompt
+                  </Label>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8 rounded-lg bg-card"
+                    title="Generate system prompt"
+                    aria-label="Generate system prompt"
+                    disabled={
+                      !name.trim() || !purpose.trim() || !accessToken || isGeneratingSystemPrompt
+                    }
+                    onClick={handleGenerateSystemPrompt}
+                  >
+                    <Sparkles
+                      className={`h-4 w-4 ${isGeneratingSystemPrompt ? "animate-pulse" : ""}`}
+                    />
+                  </Button>
+                </div>
                 <Textarea
                   id="system-prompt"
                   value={systemPrompt}
@@ -245,9 +360,27 @@ export default function NewAgentPage() {
               </div>
 
               <div>
-                <Label htmlFor="welcome-message" className="text-sm font-bold text-foreground">
-                  Welcome Message
-                </Label>
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="welcome-message" className="text-sm font-bold text-foreground">
+                    Welcome Message
+                  </Label>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8 rounded-lg bg-card"
+                    title="Generate welcome message"
+                    aria-label="Generate welcome message"
+                    disabled={
+                      !name.trim() || !purpose.trim() || !accessToken || isGeneratingWelcomeMessage
+                    }
+                    onClick={handleGenerateWelcomeMessage}
+                  >
+                    <Sparkles
+                      className={`h-4 w-4 ${isGeneratingWelcomeMessage ? "animate-pulse" : ""}`}
+                    />
+                  </Button>
+                </div>
                 <Input
                   id="welcome-message"
                   value={welcomeMessage}
@@ -259,91 +392,20 @@ export default function NewAgentPage() {
             </div>
           )}
 
-          {activeTab === "Knowledge" && (
-            <div className="space-y-7">
-              <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-5 py-4 text-sm font-bold text-primary">
-                <Database className="h-4 w-4" />
-                Upload files the agent will use as context when answering queries.
-              </div>
-
-              <div className="flex min-h-72 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-background px-6 py-12 text-center">
-                <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-xl border border-border bg-card shadow-sm">
-                  <UploadCloud className="h-8 w-8 text-primary" />
-                </div>
-                <h3 className="text-xl font-bold text-foreground">Upload Data Source</h3>
-                <p className="mt-2 text-sm font-medium text-muted-foreground">
-                  PDFs, Text, JSON. Max 50MB.
-                </p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,.txt,.json,.md"
-                  className="hidden"
-                  onChange={(event) => handleFileChange(event.target.files?.[0] ?? null)}
-                />
-                <Button
-                  type="button"
-                  className="mt-7 rounded-lg px-5"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  Browse Files
-                </Button>
-              </div>
-
-              <div>
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-base font-bold text-foreground">Attached Files</h3>
-                  <span className="text-xs font-bold uppercase text-muted-foreground">
-                    {uploadDataSource ? "1 Item" : "0 Items"}
-                  </span>
-                </div>
-
-                {uploadDataSource ? (
-                  <div className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-4 shadow-sm">
-                    <div className="flex min-w-0 items-center gap-4">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-warning/10">
-                        <FileText className="h-5 w-5 text-destructive" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-foreground">
-                          {uploadDataSource.name}
-                        </p>
-                        <p className="mt-1 text-xs font-medium text-muted-foreground">
-                          {uploadDataSourceSize} - Ready to upload
-                        </p>
-                      </div>
-                    </div>
-
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="text-destructive"
-                      onClick={clearUploadDataSource}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-dashed border-border bg-card px-4 py-5 text-center text-sm font-medium text-muted-foreground">
-                    No file selected.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
           {activeTab === "Advanced" && (
             <div className="space-y-7">
               <div>
                 <Label className="text-sm font-bold text-foreground">LLM Engine</Label>
                 <Select value={llmEngine} onValueChange={setLlmEngine}>
                   <SelectTrigger className="mt-2 h-12 rounded-lg bg-card">
-                    <SelectValue placeholder="GPT-4o (Premium)" />
+                    <SelectValue placeholder="Select LLM engine" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="gpt-4o">GPT-4o (Premium)</SelectItem>
-                    <SelectItem value="gpt-4o-mini">GPT-4o mini</SelectItem>
-                    <SelectItem value="gpt-4.1">GPT-4.1</SelectItem>
+                    {llmEngineOptions.map((engine) => (
+                      <SelectItem key={engine.value} value={engine.value}>
+                        {engine.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowUpRight, Bot, BriefcaseBusiness, Filter, Search } from "lucide-react";
-import { fetchAgents, type Agent } from "@/lib/agent-api";
+import { fetchBackendAgents, type Agent } from "@/lib/agent-api";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -14,25 +15,37 @@ function getAgentCategory(agent: Agent) {
 }
 
 export default function ExploreAgentsPage() {
+  const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
 
   useEffect(() => {
+    if (authLoading) return;
+
     async function loadAgents() {
+      if (!accessToken) {
+        setLoading(false);
+        setError("Sign in again to load your agents.");
+        return;
+      }
+
       try {
-        const data = await fetchAgents();
+        setError("");
+        const data = await fetchBackendAgents(accessToken, refreshAccessToken);
         setAgents(data);
       } catch (err) {
         console.error("Failed to load agents:", err);
+        setError(err instanceof Error ? err.message : "Failed to load agents");
       } finally {
         setLoading(false);
       }
     }
 
     loadAgents();
-  }, []);
+  }, [accessToken, authLoading, refreshAccessToken]);
 
   const categories = Array.from(
     new Set([...defaultCategories, ...agents.map((agent) => getAgentCategory(agent))]),
@@ -95,6 +108,12 @@ export default function ExploreAgentsPage() {
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 text-center">
+          <Bot className="mb-3 h-12 w-12 text-muted-foreground/40" />
+          <h2 className="text-lg font-semibold text-foreground">Could not load agents</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{error}</p>
         </div>
       ) : agents.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 text-center">

@@ -1,23 +1,25 @@
 "use client";
 
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, MessageSquare, Plus } from "lucide-react";
 import {
-  fetchAgent,
-  fetchAgents,
-  fetchChatAgents,
-  getOrCreateChat,
-  fetchMessages,
-  addMessage,
+  createBackendChat,
+  fetchBackendAgent,
+  fetchBackendAgents,
+  fetchBackendChatMessages,
+  fetchBackendChats,
+  deleteBackendChatMessage,
+  sendBackendChatMessage,
+  updateBackendChatMessage,
   type Agent,
-  type ChatAgent,
+  type Chat,
   type Message,
 } from "@/lib/agent-api";
-import { streamChat } from "@/lib/chat-stream";
+import { useAuth } from "@/hooks/use-auth";
 import { ChatInterface } from "@/components/ChatInterface";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AUTHENTICATED_HOME } from "@/lib/routes";
 import {
   Select,
@@ -27,111 +29,365 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-function formatRelativeTime(value: string) {
-  const timestamp = new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) return "";
+function ChatSkeleton() {
+  return (
+    <div className="flex h-full flex-col rounded-xl border border-border bg-card">
+      <div className="flex h-[68px] items-center gap-3 border-b border-border px-6">
+        <Skeleton className="h-9 w-9 rounded-lg" />
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-3 w-20" />
+        </div>
+      </div>
 
-  const minutes = Math.max(1, Math.floor((Date.now() - timestamp) / 60000));
-  if (minutes < 60) return `${minutes}m`;
+      <div className="flex-1 overflow-hidden bg-background/30 p-6">
+        <div className="mx-auto max-w-2xl space-y-5">
+          <div className="flex items-start gap-3">
+            <Skeleton className="h-9 w-9 rounded-lg" />
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-72" />
+              <Skeleton className="h-4 w-56" />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-64" />
+              <Skeleton className="ml-auto h-4 w-40" />
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <Skeleton className="h-9 w-9 rounded-lg" />
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-80" />
+              <Skeleton className="h-4 w-60" />
+              <Skeleton className="h-4 w-44" />
+            </div>
+          </div>
+        </div>
+      </div>
 
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
+      <div className="border-t border-border bg-card p-4">
+        <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-full border border-border bg-background px-5 py-2 shadow-sm">
+          <Skeleton className="h-5 flex-1" />
+          <Skeleton className="h-9 w-9 rounded-full" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
-  return `${Math.floor(hours / 24)}d`;
+function ChatWorkspaceSkeleton() {
+  return (
+    <div className="grid h-[calc(100vh-3.5rem)] gap-3 p-4 lg:grid-cols-[274px_minmax(0,1fr)]">
+      <aside className="flex min-h-0 flex-col rounded-xl border border-border bg-card">
+        <div className="border-b border-border p-4">
+          <Skeleton className="h-5 w-32" />
+          <Skeleton className="mt-4 h-10 w-full rounded-lg" />
+          <Skeleton className="mt-4 h-10 w-full rounded-lg" />
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div key={index} className="flex items-start gap-3 rounded-lg p-3">
+              <Skeleton className="h-8 w-8 rounded-lg" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-4 w-36" />
+                <Skeleton className="h-3 w-44" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </aside>
+
+      <main className="min-h-0 overflow-hidden">
+        <ChatSkeleton />
+      </main>
+    </div>
+  );
+}
+
+function mergeMessagesById(messages: Message[]) {
+  const messageMap = new Map<string, Message>();
+
+  for (const message of messages) {
+    messageMap.set(message.id, message);
+  }
+
+  return Array.from(messageMap.values()).sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
 export default function ChatPage() {
   const params = useParams<{ agentId: string }>();
   const agentId = params.agentId;
   const router = useRouter();
+  const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [conversations, setConversations] = useState<ChatAgent[]>([]);
-  const [chatId, setChatId] = useState<string | null>(null);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [activeChat, setActiveChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isSwitchingAgent, setIsSwitchingAgent] = useState(false);
+  const [isLoadingChat, setIsLoadingChat] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [streamingContent, setStreamingContent] = useState("");
+  const [messageActionId, setMessageActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const applyChatTitle = useCallback((chatId: string, content: string) => {
+    const title = content.trim().replace(/\s+/g, " ").slice(0, 80);
+    if (!title) return;
+
+    setActiveChat((prev) => {
+      if (!prev || prev.id !== chatId || prev.title) return prev;
+      return { ...prev, title };
+    });
+    setChats((prev) =>
+      prev.map((chat) => (chat.id === chatId && !chat.title ? { ...chat, title } : chat)),
+    );
+  }, []);
+
+  const setChatTitle = useCallback((chatId: string, content: string) => {
+    const title = content.trim().replace(/\s+/g, " ").slice(0, 80);
+    if (!title) return;
+
+    setActiveChat((prev) => (prev?.id === chatId ? { ...prev, title } : prev));
+    setChats((prev) => prev.map((chat) => (chat.id === chatId ? { ...chat, title } : chat)));
+  }, []);
+
+  const loadAgentWorkspace = useCallback(
+    async (selectedAgentId: string, updateUrl = false) => {
+      if (!accessToken) return;
+
+      const [agentData, chatList] = await Promise.all([
+        fetchBackendAgent(selectedAgentId, accessToken, refreshAccessToken),
+        fetchBackendChats(selectedAgentId, accessToken, refreshAccessToken),
+      ]);
+
+      const selectedChat =
+        chatList[0] ?? (await createBackendChat(selectedAgentId, accessToken, refreshAccessToken));
+      const nextMessages = selectedChat
+        ? await fetchBackendChatMessages(
+            selectedAgentId,
+            selectedChat.id,
+            accessToken,
+            refreshAccessToken,
+          )
+        : [];
+
+      setAgent(agentData);
+      setChats(chatList.length > 0 ? chatList : [selectedChat]);
+      setActiveChat(selectedChat);
+      setMessages(mergeMessagesById(nextMessages));
+
+      if (updateUrl) {
+        window.history.pushState(null, "", `/agents/${selectedAgentId}/chat`);
+      }
+    },
+    [accessToken, refreshAccessToken],
+  );
+
   useEffect(() => {
+    if (authLoading) return;
+
     async function init() {
+      if (!accessToken) {
+        setLoading(false);
+        setError("Sign in again to load this chat.");
+        return;
+      }
+
       try {
-        const agentData = await fetchAgent(agentId);
-        setAgent(agentData);
-        const agentList = await fetchAgents();
+        setError(null);
+        const [agentList] = await Promise.all([
+          fetchBackendAgents(accessToken, refreshAccessToken),
+        ]);
         setAgents(agentList);
-        const chat = await getOrCreateChat(agentId);
-        setChatId(chat.id);
-        const msgs = await fetchMessages(chat.id);
-        setMessages(msgs);
-        const chatAgents = await fetchChatAgents();
-        setConversations(chatAgents);
+        await loadAgentWorkspace(agentId);
       } catch (err) {
         console.error("Failed to load chat:", err);
-        setError("Failed to load agent");
+        setError(err instanceof Error ? err.message : "Failed to load agent");
       } finally {
         setLoading(false);
       }
     }
     init();
-  }, [agentId]);
+  }, [accessToken, agentId, authLoading, loadAgentWorkspace, refreshAccessToken]);
 
-  const refreshConversations = useCallback(async () => {
+  const switchAgent = useCallback(
+    async (selectedAgentId: string, updateUrl = true) => {
+      if (!selectedAgentId || selectedAgentId === agent?.id || !accessToken) return;
+
+      setIsSwitchingAgent(true);
+      setError(null);
+
+      try {
+        await loadAgentWorkspace(selectedAgentId, updateUrl);
+      } catch (err) {
+        console.error("Failed to switch agent:", err);
+        setError(err instanceof Error ? err.message : "Failed to switch agent");
+      } finally {
+        setIsSwitchingAgent(false);
+      }
+    },
+    [accessToken, agent?.id, loadAgentWorkspace],
+  );
+
+  const handleNewChat = useCallback(async () => {
+    if (!agent || !accessToken) return;
+    setError(null);
+    setIsSwitchingAgent(true);
+
     try {
-      const chatAgents = await fetchChatAgents();
-      setConversations(chatAgents);
+      const chat = await createBackendChat(agent.id, accessToken, refreshAccessToken);
+      setChats((prev) => [chat, ...prev]);
+      setActiveChat(chat);
+      setMessages([]);
     } catch (err) {
-      console.error("Failed to refresh conversations:", err);
+      console.error("Failed to create chat:", err);
+      setError(err instanceof Error ? err.message : "Failed to create chat");
+    } finally {
+      setIsSwitchingAgent(false);
     }
-  }, []);
+  }, [accessToken, agent, refreshAccessToken]);
+
+  const handleSelectChat = useCallback(
+    async (chat: Chat) => {
+      if (!agent || !accessToken || chat.id === activeChat?.id) return;
+      setError(null);
+      setIsLoadingChat(true);
+
+      try {
+        setActiveChat(chat);
+        const messageList = await fetchBackendChatMessages(
+          agent.id,
+          chat.id,
+          accessToken,
+          refreshAccessToken,
+        );
+        setMessages(mergeMessagesById(messageList));
+      } catch (err) {
+        console.error("Failed to load chat:", err);
+        setError(err instanceof Error ? err.message : "Failed to load chat");
+      } finally {
+        setIsLoadingChat(false);
+      }
+    },
+    [accessToken, activeChat?.id, agent, refreshAccessToken],
+  );
 
   const handleSend = useCallback(
     async (content: string) => {
-      if (!chatId || !agent) return;
+      if (!agent || !accessToken) return;
       setError(null);
-
-      const userMsg = await addMessage(chatId, "user", content);
-      setMessages((prev) => [...prev, userMsg]);
-      refreshConversations();
-
       setIsStreaming(true);
-      setStreamingContent("");
 
-      let fullResponse = "";
-
-      await streamChat({
-        messages: [...messages, { sender_type: "user" as const, content }],
-        systemPrompt: agent.system_prompt,
-        onDelta: (delta) => {
-          fullResponse += delta;
-          setStreamingContent(fullResponse);
-        },
-        onDone: async () => {
-          if (fullResponse) {
-            const assistantMsg = await addMessage(chatId, "assistant", fullResponse);
-            setMessages((prev) => [...prev, assistantMsg]);
-            refreshConversations();
-          }
-          setStreamingContent("");
-          setIsStreaming(false);
-        },
-        onError: (errMsg) => {
-          setError(errMsg);
-          setStreamingContent("");
-          setIsStreaming(false);
-        },
-      });
+      try {
+        const chat =
+          activeChat ?? (await createBackendChat(agent.id, accessToken, refreshAccessToken));
+        if (!activeChat) {
+          setActiveChat(chat);
+          setChats((prev) => [chat, ...prev]);
+        }
+        const response = await sendBackendChatMessage(
+          agent.id,
+          chat.id,
+          content,
+          accessToken,
+          refreshAccessToken,
+        );
+        setMessages((prev) =>
+          mergeMessagesById([...prev, response.user_message, response.assistant_message]),
+        );
+        applyChatTitle(chat.id, content);
+      } catch (err) {
+        console.error("Failed to send message:", err);
+        setError(err instanceof Error ? err.message : "Failed to send message");
+      } finally {
+        setIsStreaming(false);
+      }
     },
-    [agent, chatId, messages, refreshConversations],
+    [accessToken, activeChat, agent, applyChatTitle, refreshAccessToken],
+  );
+
+  const handleDeleteMessage = useCallback(
+    async (messageId: string) => {
+      if (!agent || !activeChat || !accessToken) return;
+      setError(null);
+      setMessageActionId(messageId);
+
+      try {
+        await deleteBackendChatMessage(
+          agent.id,
+          activeChat.id,
+          messageId,
+          accessToken,
+          refreshAccessToken,
+        );
+        setMessages((prev) => prev.filter((message) => message.id !== messageId));
+      } catch (err) {
+        console.error("Failed to delete message:", err);
+        setError(err instanceof Error ? err.message : "Failed to delete message");
+      } finally {
+        setMessageActionId(null);
+      }
+    },
+    [accessToken, activeChat, agent, refreshAccessToken],
+  );
+
+  const handleEditMessage = useCallback(
+    async (messageId: string, content: string) => {
+      if (!agent || !activeChat || !accessToken) return;
+      setError(null);
+      setMessageActionId(messageId);
+      setIsStreaming(true);
+
+      try {
+        const isFirstUserMessage =
+          messages.find((message) => message.sender_type === "user")?.id === messageId;
+        const response = await updateBackendChatMessage(
+          agent.id,
+          activeChat.id,
+          messageId,
+          content,
+          accessToken,
+          refreshAccessToken,
+        );
+        setMessages((prev) => {
+          const next = [...prev];
+          const userIndex = next.findIndex((message) => message.id === response.user_message.id);
+          if (userIndex >= 0) {
+            next[userIndex] = response.user_message;
+          }
+
+          const assistantIndex = next.findIndex(
+            (message) => message.id === response.assistant_message.id,
+          );
+          if (assistantIndex >= 0) {
+            next[assistantIndex] = response.assistant_message;
+          } else if (userIndex >= 0) {
+            next.splice(userIndex + 1, 0, response.assistant_message);
+          } else {
+            next.push(response.user_message, response.assistant_message);
+          }
+
+          return mergeMessagesById(next);
+        });
+        if (isFirstUserMessage) {
+          setChatTitle(activeChat.id, content);
+        }
+      } catch (err) {
+        console.error("Failed to update message:", err);
+        setError(err instanceof Error ? err.message : "Failed to update message");
+      } finally {
+        setIsStreaming(false);
+        setMessageActionId(null);
+      }
+    },
+    [accessToken, activeChat, agent, messages, refreshAccessToken, setChatTitle],
   );
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+    return <ChatWorkspaceSkeleton />;
   }
 
   if (!agent) {
@@ -145,83 +401,82 @@ export default function ChatPage() {
     );
   }
 
-  const activeConversationIds = new Set(conversations.map((item) => item.agent.id));
-  const conversationItems = [
-    ...(agent && !activeConversationIds.has(agent.id)
-      ? [
-          {
-            agent,
-            preview: messages.at(-1)?.content || agent.purpose,
-            time: messages.at(-1)?.created_at
-              ? formatRelativeTime(messages.at(-1)?.created_at ?? "")
-              : "Now",
-            active: true,
-          },
-        ]
-      : []),
-    ...conversations.map((item) => ({
-      agent: item.agent,
-      preview: item.last_message.content,
-      time: formatRelativeTime(item.last_message.created_at),
-      active: item.agent.id === agent.id,
-    })),
-  ];
-
   return (
     <div className="grid h-[calc(100vh-3.5rem)] gap-3 p-4 lg:grid-cols-[274px_minmax(0,1fr)]">
-      <aside className="flex min-h-0 flex-col rounded-xl border border-border bg-card">
+      <aside
+        className={`flex min-h-0 flex-col rounded-xl border border-border bg-card ${
+          isSwitchingAgent ? "pointer-events-none" : ""
+        }`}
+      >
         <div className="border-b border-border p-4">
-          <h2 className="text-lg font-bold text-foreground">Conversations</h2>
-          <div className="mt-4">
-            <Select
-              value={agent.id}
-              onValueChange={(selectedAgentId) => {
-                if (selectedAgentId !== agent.id) {
-                  router.push(`/agents/${selectedAgentId}/chat`);
-                }
-              }}
-            >
-              <SelectTrigger className="h-10 rounded-lg bg-background">
-                <SelectValue placeholder="Select agent" />
-              </SelectTrigger>
-              <SelectContent>
-                {agents.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <Link href="/create-chat">
-            <Button className="mt-4 w-full gap-2 rounded-lg">
-              <Plus className="h-4 w-4" />
-              New Chat
-            </Button>
-          </Link>
+          {isSwitchingAgent ? (
+            <>
+              <Skeleton className="h-5 w-32" />
+              <Skeleton className="mt-4 h-10 w-full rounded-lg" />
+              <Skeleton className="mt-4 h-10 w-full rounded-lg" />
+            </>
+          ) : (
+            <>
+              <h2 className="text-lg font-bold text-foreground">Conversations</h2>
+              <div className="mt-4">
+                <Select
+                  value={agent.id}
+                  onValueChange={(selectedAgentId) => switchAgent(selectedAgentId)}
+                >
+                  <SelectTrigger className="h-10 rounded-lg bg-background">
+                    <SelectValue placeholder="Select agent" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {agents.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button className="mt-4 w-full gap-2 rounded-lg" onClick={handleNewChat}>
+                <Plus className="h-4 w-4" />
+                New Chat
+              </Button>
+            </>
+          )}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          {conversationItems.length === 0 ? (
+          {isSwitchingAgent ? (
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div key={index} className="flex items-start gap-3 rounded-lg p-3">
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Skeleton className="h-4 w-36" />
+                    <Skeleton className="h-3 w-44" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : chats.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center">
               <MessageSquare className="mb-3 h-10 w-10 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">No conversations yet</p>
+              <p className="text-sm text-muted-foreground">No chats yet</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {conversationItems.map((item) => (
-                <Link
-                  key={item.agent.id}
-                  href={`/agents/${item.agent.id}/chat`}
-                  className={`flex items-start gap-3 rounded-lg p-3 transition-colors ${
-                    item.active
+              {chats.map((chat) => (
+                <button
+                  key={chat.id}
+                  type="button"
+                  onClick={() => handleSelectChat(chat)}
+                  className={`flex w-full items-start gap-3 rounded-lg p-3 text-left transition-colors ${
+                    chat.id === activeChat?.id
                       ? "bg-primary/10 text-primary"
                       : "text-sidebar-foreground hover:bg-sidebar-accent"
                   }`}
                 >
                   <div
                     className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-                      item.active
+                      chat.id === activeChat?.id
                         ? "bg-primary text-primary-foreground"
                         : "border border-border bg-background text-muted-foreground"
                     }`}
@@ -231,15 +486,14 @@ export default function ChatPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <p className="truncate text-sm font-bold text-foreground">
-                        {item.agent.name}
+                        {chat.title || "New chat"}
                       </p>
-                      <span className="text-xs font-medium text-muted-foreground">{item.time}</span>
                     </div>
                     <p className="mt-1 line-clamp-1 text-xs font-medium text-muted-foreground">
-                      {item.preview}
+                      {chat.title ? agent.name : "Ask the first question"}
                     </p>
                   </div>
-                </Link>
+                </button>
               ))}
             </div>
           )}
@@ -247,14 +501,22 @@ export default function ChatPage() {
       </aside>
 
       <main className="min-h-0 overflow-hidden">
-        <ChatInterface
-          agent={agent}
-          messages={messages}
-          onSend={handleSend}
-          isLoading={isStreaming}
-          streamingContent={streamingContent}
-          error={error}
-        />
+        {isSwitchingAgent ? (
+          <ChatSkeleton />
+        ) : (
+          <ChatInterface
+            agent={agent}
+            messages={messages}
+            onSend={handleSend}
+            isLoading={isStreaming}
+            streamingContent=""
+            error={error}
+            onDeleteMessage={handleDeleteMessage}
+            onEditMessage={handleEditMessage}
+            messageActionId={messageActionId}
+            isLoadingHistory={isLoadingChat}
+          />
+        )}
       </main>
     </div>
   );

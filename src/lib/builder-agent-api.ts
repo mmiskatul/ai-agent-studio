@@ -8,35 +8,26 @@ export interface CreateBuilderAgentInput {
   llmEngine: string;
   temperature: number;
   status: string;
-  uploadDataSource?: File | null;
-}
-
-function buildCreateBuilderAgentFormData(input: CreateBuilderAgentInput) {
-  const formData = new FormData();
-  formData.append("name", input.name);
-  formData.append("short_description", input.shortDescription);
-  formData.append("base_template", input.baseTemplate);
-  formData.append("category_tag", input.categoryTag ?? "");
-  formData.append("system_prompt", input.systemPrompt);
-  formData.append("welcome_message", input.welcomeMessage ?? "");
-  formData.append("llm_engine", input.llmEngine);
-  formData.append("temperature", String(input.temperature));
-  formData.append("status", input.status);
-
-  if (input.uploadDataSource) {
-    formData.append("upload_data_source", input.uploadDataSource);
-  }
-
-  return formData;
 }
 
 async function postBuilderAgent(input: CreateBuilderAgentInput, accessToken: string) {
-  const response = await fetch("/backend/api/v1/agents/builder/with-knowledge", {
+  const response = await fetch("/backend/api/v1/agents/builder", {
     method: "POST",
     headers: {
+      "Content-Type": "application/json",
       Authorization: `Bearer ${accessToken}`,
     },
-    body: buildCreateBuilderAgentFormData(input),
+    body: JSON.stringify({
+      name: input.name,
+      short_description: input.shortDescription,
+      base_template: input.baseTemplate,
+      category_tag: input.categoryTag ?? null,
+      system_prompt: input.systemPrompt,
+      welcome_message: input.welcomeMessage ?? null,
+      llm_engine: input.llmEngine,
+      temperature: input.temperature,
+      status: input.status,
+    }),
   });
 
   const body = await response.json().catch(() => ({}));

@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BriefcaseBusiness, MessageSquare, Plus, Send } from "lucide-react";
-import { fetchAgents, type Agent } from "@/lib/agent-api";
+import { fetchBackendAgents, type Agent } from "@/lib/agent-api";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -13,46 +14,42 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const staticConversations = [
-  {
-    id: "data-analyst-pro",
-    name: "Data Analyst Pro",
-    preview: "Revenue grew 14% this quarter.",
-    time: "2m",
-    active: true,
-  },
-  {
-    id: "devops-helper",
-    name: "DevOps Helper",
-    preview: "Docker config looks correct.",
-    time: "1h",
-    active: false,
-  },
-  {
-    id: "ux-copywriter",
-    name: "UX Copywriter",
-    preview: "Here are 3 options for you.",
-    time: "3h",
-    active: false,
-  },
-];
-
 export default function CreateChatPage() {
   const router = useRouter();
+  const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  function openAgentChat(agentId: string) {
+    if (!agentId) return;
+    router.push(`/agents/${agentId}/chat`);
+  }
 
   useEffect(() => {
+    if (authLoading) return;
+
     async function loadAgents() {
+      if (!accessToken) {
+        setLoading(false);
+        setError("Sign in again to load your agents.");
+        return;
+      }
+
       try {
-        const data = await fetchAgents();
+        setError("");
+        const data = await fetchBackendAgents(accessToken, refreshAccessToken);
         setAgents(data);
       } catch (err) {
         console.error("Failed to load agents:", err);
+        setError(err instanceof Error ? err.message : "Failed to load agents");
+      } finally {
+        setLoading(false);
       }
     }
 
     loadAgents();
-  }, []);
+  }, [accessToken, authLoading, refreshAccessToken]);
 
   return (
     <div className="grid h-[calc(100vh-3.5rem)] gap-3 p-4 lg:grid-cols-[274px_minmax(0,1fr)]">
@@ -60,9 +57,9 @@ export default function CreateChatPage() {
         <div className="border-b border-border p-4">
           <h1 className="text-lg font-bold text-foreground">Conversations</h1>
           <div className="mt-4">
-            <Select onValueChange={(agentId) => router.push(`/agents/${agentId}/chat`)}>
+            <Select disabled={loading || agents.length === 0} onValueChange={openAgentChat}>
               <SelectTrigger className="h-10 rounded-lg bg-background">
-                <SelectValue placeholder="Select agent" />
+                <SelectValue placeholder={loading ? "Loading agents..." : "Select agent"} />
               </SelectTrigger>
               <SelectContent>
                 {agents.map((agent) => (
@@ -80,50 +77,48 @@ export default function CreateChatPage() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          <div className="space-y-2">
-            {staticConversations.map((conversation) => (
-              <button
-                key={conversation.id}
-                type="button"
-                className={`flex w-full items-start gap-3 rounded-lg p-3 text-left transition-colors ${
-                  conversation.active
-                    ? "bg-primary/10"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent"
-                }`}
-              >
-                <div
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-                    conversation.active
-                      ? "bg-primary text-primary-foreground"
-                      : "border border-border bg-background text-muted-foreground"
-                  }`}
+          {loading ? (
+            <div className="flex h-full items-center justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          ) : error ? (
+            <div className="flex h-full flex-col items-center justify-center px-4 text-center">
+              <MessageSquare className="mb-3 h-10 w-10 text-muted-foreground/40" />
+              <p className="text-sm font-medium text-foreground">Could not load agents</p>
+              <p className="mt-1 text-xs text-muted-foreground">{error}</p>
+            </div>
+          ) : agents.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center px-4 text-center">
+              <MessageSquare className="mb-3 h-10 w-10 text-muted-foreground/40" />
+              <p className="text-sm font-medium text-foreground">No agents created</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Create an agent before starting a chat.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {agents.map((agent) => (
+                <button
+                  key={agent.id}
+                  type="button"
+                  className="flex w-full items-start gap-3 rounded-lg p-3 text-left text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
+                  onClick={() => openAgentChat(agent.id)}
                 >
-                  <MessageSquare className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-bold text-foreground">
-                      {conversation.name}
-                    </p>
-                    <span
-                      className={`text-xs font-medium ${
-                        conversation.active ? "text-primary" : "text-muted-foreground"
-                      }`}
-                    >
-                      {conversation.time}
-                    </span>
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground">
+                    <MessageSquare className="h-4 w-4" />
                   </div>
-                  <p
-                    className={`mt-1 line-clamp-1 text-xs font-medium ${
-                      conversation.active ? "text-primary" : "text-muted-foreground"
-                    }`}
-                  >
-                    {conversation.preview}
-                  </p>
-                </div>
-              </button>
-            ))}
-          </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-sm font-bold text-foreground">{agent.name}</p>
+                    </div>
+                    <p className="mt-1 line-clamp-1 text-xs font-medium text-muted-foreground">
+                      {agent.purpose}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </aside>
 
