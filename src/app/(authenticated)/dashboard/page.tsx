@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Activity, Bot, CheckCircle2, Clock3, Filter, Search } from "lucide-react";
-import { fetchAgents, type Agent } from "@/lib/agent-api";
+import {
+  fetchDashboardOverview,
+  type DashboardOverview,
+  type DashboardAgentSummary,
+} from "@/lib/dashboard-api";
+import { useAuth } from "@/hooks/use-auth";
 import { AgentTestDrawer } from "@/components/AgentTestDrawer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,88 +21,89 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+const emptyDashboard: DashboardOverview = {
+  stats: {
+    total_agents: 0,
+    active_agents: 0,
+    inactive_agents: 0,
+    recently_updated_agents: 0,
+    total_chats: 0,
+    total_messages: 0,
+    queries_30d: 0,
+  },
+  top_agents: [],
+  categories: [],
+  recent_activity: [],
+};
+
 export default function DashboardPage() {
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const { accessToken } = useAuth();
+  const [dashboard, setDashboard] = useState<DashboardOverview>(emptyDashboard);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
 
-  async function loadAgents() {
-    try {
-      const data = await fetchAgents();
-      setAgents(data);
-    } catch (err) {
-      console.error("Failed to load agents:", err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    loadAgents();
-  }, []);
+    async function loadDashboard() {
+      if (!accessToken) {
+        setLoading(false);
+        return;
+      }
 
-  const categories = [
-    "All",
-    ...Array.from(
-      new Set(
-        agents
-          .map((agent) => agent.template_type)
-          .filter((templateType): templateType is string => Boolean(templateType)),
-      ),
-    ),
-  ];
-  const filtered = agents.filter((agent) => {
+      setLoading(true);
+      try {
+        const data = await fetchDashboardOverview(accessToken);
+        setDashboard(data);
+        setError(null);
+      } catch (err) {
+        console.error("Failed to load dashboard:", err);
+        setError(err instanceof Error ? err.message : "Failed to load dashboard");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadDashboard();
+  }, [accessToken]);
+
+  const categories = ["All", ...dashboard.categories.map((item) => item.name)];
+  const filteredTopAgents = dashboard.top_agents.filter((agent) => {
     const query = search.toLowerCase();
     const matchesSearch =
       agent.name.toLowerCase().includes(query) ||
       agent.role.toLowerCase().includes(query) ||
-      agent.purpose.toLowerCase().includes(query);
-    const matchesCategory = category === "All" || agent.template_type === category;
+      agent.category.toLowerCase().includes(query);
+    const matchesCategory = category === "All" || agent.category === category;
     return matchesSearch && matchesCategory;
   });
-  const totalAgents = agents.length;
-  const activeAgents = agents.filter((agent) => agent.status === "active").length;
-  const deactiveAgents = agents.filter((agent) => agent.status !== "active").length;
-  const recentlyUpdatedAgents = agents.filter((agent) => {
-    const updatedAt = new Date(agent.updated_at).getTime();
-    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    return Number.isFinite(updatedAt) && updatedAt >= sevenDaysAgo;
-  }).length;
 
   const stats = [
     {
       label: "Total Agents",
-      value: totalAgents,
+      value: dashboard.stats.total_agents,
       description: "All agents created",
       icon: Bot,
     },
     {
       label: "Active Agents",
-      value: activeAgents,
+      value: dashboard.stats.active_agents,
       description: "Ready for chat",
       icon: CheckCircle2,
     },
     {
-      label: "Deactive Agents",
-      value: deactiveAgents,
+      label: "Inactive Agents",
+      value: dashboard.stats.inactive_agents,
       description: "Currently paused",
       icon: Clock3,
     },
     {
       label: "Recently Updated",
-      value: recentlyUpdatedAgents,
+      value: dashboard.stats.recently_updated_agents,
       description: "Changed in last 7 days",
       icon: Activity,
     },
   ];
-  const topAgents = [...agents]
-    .sort((a, b) => {
-      const statusScore = Number(b.status === "active") - Number(a.status === "active");
-      if (statusScore !== 0) return statusScore;
-      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-    })
-    .slice(0, 5);
 
   return (
     <div className="mx-auto w-full max-w-7xl p-6">
@@ -143,6 +149,12 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {error ? (
+        <div className="mb-6 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+          {error}
+        </div>
+      ) : null}
+
       <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
           <div key={stat.label} className="agent-card flex items-center gap-4 p-5">
@@ -168,7 +180,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {topAgents.length === 0 ? (
+        {filteredTopAgents.length === 0 ? (
           <div className="px-5 py-10 text-center text-sm text-muted-foreground">
             Create agents to see recommendations here.
           </div>
@@ -184,7 +196,7 @@ export default function DashboardPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {topAgents.map((agent) => (
+              {filteredTopAgents.map((agent: DashboardAgentSummary) => (
                 <TableRow key={agent.id}>
                   <TableCell className="px-5 font-medium text-foreground">{agent.name}</TableCell>
                   <TableCell className="text-muted-foreground">{agent.role}</TableCell>
@@ -199,9 +211,7 @@ export default function DashboardPage() {
                       {agent.status}
                     </span>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {agent.template_type ?? "Custom"}
-                  </TableCell>
+                  <TableCell className="text-muted-foreground">{agent.category}</TableCell>
                   <TableCell className="text-right">
                     <Link href={`/agents/${agent.id}/chat`}>
                       <Button size="sm">Chat</Button>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Bolt,
   BookOpen,
@@ -14,8 +14,9 @@ import {
   UploadCloud,
   Zap,
 } from "lucide-react";
-import { createAgent } from "@/lib/agent-api";
+import { createBuilderAgent } from "@/lib/builder-agent-api";
 import { AUTHENTICATED_HOME } from "@/lib/routes";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,7 +38,10 @@ const tabs = [
 
 export default function NewAgentPage() {
   const router = useRouter();
+  const { accessToken } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
   const [name, setName] = useState("");
   const [purpose, setPurpose] = useState("");
   const [templateType, setTemplateType] = useState("blank");
@@ -47,29 +51,55 @@ export default function NewAgentPage() {
   const [activeTab, setActiveTab] = useState("Setup");
   const [llmEngine, setLlmEngine] = useState("gpt-4o");
   const [temperature, setTemperature] = useState(0.7);
+  const [uploadDataSource, setUploadDataSource] = useState<File | null>(null);
 
   async function handleCreate(status: string) {
-    if (!name.trim() || !purpose.trim()) return;
+    if (!name.trim() || !purpose.trim() || !accessToken) return;
 
     setIsSubmitting(true);
+    setError("");
     try {
-      await createAgent({
-        name: name.trim(),
-        role: category.trim() || "AgentLab",
-        purpose: purpose.trim(),
-        template_type: category.trim() || templateType,
-        system_prompt:
-          systemPrompt.trim() ||
-          `You are ${name.trim()}, an AI agent that helps with: ${purpose.trim()}`,
-        status,
-      });
+      await createBuilderAgent(
+        {
+          name: name.trim(),
+          shortDescription: purpose.trim(),
+          baseTemplate: templateType,
+          categoryTag: category.trim() || undefined,
+          systemPrompt:
+            systemPrompt.trim() ||
+            `You are ${name.trim()}, an AI agent that helps with: ${purpose.trim()}`,
+          welcomeMessage: welcomeMessage.trim() || undefined,
+          llmEngine,
+          temperature,
+          status,
+          uploadDataSource,
+        },
+        accessToken,
+      );
       router.push(AUTHENTICATED_HOME);
     } catch (err) {
       console.error("Failed to create agent:", err);
+      setError(err instanceof Error ? err.message : "Failed to create agent");
     } finally {
       setIsSubmitting(false);
     }
   }
+
+  function handleFileChange(file: File | null) {
+    if (!file) return;
+    setUploadDataSource(file);
+  }
+
+  function clearUploadDataSource() {
+    setUploadDataSource(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }
+
+  const uploadDataSourceSize = uploadDataSource
+    ? `${(uploadDataSource.size / 1024 / 1024).toFixed(2)} MB`
+    : "";
 
   return (
     <div className="grid h-[calc(100vh-3.5rem)] lg:grid-cols-[minmax(0,1fr)_380px]">
@@ -104,6 +134,12 @@ export default function NewAgentPage() {
             </Button>
           </div>
         </header>
+
+        {error && (
+          <div className="border-b border-destructive/20 bg-destructive/10 px-10 py-3 text-sm font-bold text-destructive">
+            {error}
+          </div>
+        )}
 
         <div className="border-b border-border py-4 pl-10 pr-7">
           <div className="flex flex-wrap gap-2">
@@ -237,7 +273,18 @@ export default function NewAgentPage() {
                 <p className="mt-2 text-sm font-medium text-muted-foreground">
                   PDFs, Text, JSON. Max 50MB.
                 </p>
-                <Button type="button" className="mt-7 rounded-lg px-5">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.txt,.json,.md"
+                  className="hidden"
+                  onChange={(event) => handleFileChange(event.target.files?.[0] ?? null)}
+                />
+                <Button
+                  type="button"
+                  className="mt-7 rounded-lg px-5"
+                  onClick={() => fileInputRef.current?.click()}
+                >
                   Browse Files
                 </Button>
               </div>
@@ -245,28 +292,41 @@ export default function NewAgentPage() {
               <div>
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-base font-bold text-foreground">Attached Files</h3>
-                  <span className="text-xs font-bold uppercase text-muted-foreground">1 Item</span>
+                  <span className="text-xs font-bold uppercase text-muted-foreground">
+                    {uploadDataSource ? "1 Item" : "0 Items"}
+                  </span>
                 </div>
 
-                <div className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-4 shadow-sm">
-                  <div className="flex min-w-0 items-center gap-4">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-warning/10">
-                      <FileText className="h-5 w-5 text-destructive" />
+                {uploadDataSource ? (
+                  <div className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-4 shadow-sm">
+                    <div className="flex min-w-0 items-center gap-4">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-warning/10">
+                        <FileText className="h-5 w-5 text-destructive" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-foreground">
+                          {uploadDataSource.name}
+                        </p>
+                        <p className="mt-1 text-xs font-medium text-muted-foreground">
+                          {uploadDataSourceSize} - Ready to upload
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-foreground">
-                        sales_playbook_2026.pdf
-                      </p>
-                      <p className="mt-1 text-xs font-medium text-muted-foreground">
-                        2.4 MB · Indexed
-                      </p>
-                    </div>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="text-destructive"
+                      onClick={clearUploadDataSource}
+                    >
+                      Remove
+                    </Button>
                   </div>
-
-                  <Button type="button" variant="ghost" className="text-destructive">
-                    Remove
-                  </Button>
-                </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border bg-card px-4 py-5 text-center text-sm font-medium text-muted-foreground">
+                    No file selected.
+                  </div>
+                )}
               </div>
             </div>
           )}
