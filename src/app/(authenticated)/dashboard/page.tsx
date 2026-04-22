@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Activity, Bot, CheckCircle2, Clock3, Filter, Search } from "lucide-react";
+import { Activity, Bot, Check, CheckCircle2, Clock3, Filter, Search } from "lucide-react";
 import {
   fetchDashboardOverview,
   type DashboardOverview,
@@ -11,6 +11,14 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { AgentTestDrawer } from "@/components/AgentTestDrawer";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -162,26 +170,37 @@ export default function DashboardPage() {
               className="h-10 rounded-lg bg-card pl-10"
             />
           </div>
-          <Button variant="outline" className="h-10 gap-2 rounded-lg bg-card">
-            <Filter className="h-4 w-4" />
-            Filter
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className={`h-10 gap-2 rounded-lg bg-card px-5 ${
+                  category !== "All" ? "border-primary text-primary" : ""
+                }`}
+              >
+                <Filter className="h-4 w-4" />
+                Filter
+                {category !== "All" && (
+                  <span className="max-w-24 truncate text-xs font-semibold">{category}</span>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Agent category</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {categories.map((item) => (
+                <DropdownMenuItem
+                  key={item}
+                  className="flex cursor-pointer items-center justify-between capitalize"
+                  onClick={() => setCategory(item)}
+                >
+                  {item}
+                  {category === item && <Check className="h-4 w-4" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-      </div>
-
-      <div className="mb-6 flex flex-wrap gap-2">
-        {categories.map((item) => (
-          <Button
-            key={item}
-            type="button"
-            size="sm"
-            variant={category === item ? "default" : "outline"}
-            className="rounded-lg px-4 capitalize"
-            onClick={() => setCategory(item)}
-          >
-            {item}
-          </Button>
-        ))}
       </div>
 
       {error ? (

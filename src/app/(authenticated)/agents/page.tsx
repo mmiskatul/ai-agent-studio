@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Bot, MessageSquare, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { Bot, Check, Filter, MessageSquare, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import {
   deleteBackendAgent,
   fetchBackendAgent,
@@ -18,6 +18,14 @@ import { AgentTestDrawer } from "@/components/AgentTestDrawer";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -219,7 +227,7 @@ export default function AgentsPage() {
         </Link>
       </div>
 
-      <div className="mb-6 grid w-full gap-3 md:grid-cols-[minmax(220px,1fr)_180px_180px_180px_auto]">
+      <div className="mb-6 grid w-full gap-3 md:grid-cols-[minmax(220px,1fr)_180px_180px_auto_auto]">
         <div className="relative min-w-0">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -241,20 +249,6 @@ export default function AgentsPage() {
           </SelectContent>
         </Select>
 
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="h-10 rounded-lg bg-card">
-            <SelectValue placeholder="Category" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All categories</SelectItem>
-            {categoryOptions.map((category) => (
-              <SelectItem key={category} value={category}>
-                {category}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
         <Select value={sortBy} onValueChange={setSortBy}>
           <SelectTrigger className="h-10 rounded-lg bg-card">
             <SelectValue placeholder="Sort" />
@@ -265,6 +259,47 @@ export default function AgentsPage() {
             <SelectItem value="queries">Most queries</SelectItem>
           </SelectContent>
         </Select>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              className={`h-10 justify-between gap-2 rounded-lg bg-card px-4 ${
+                categoryFilter !== "all" ? "border-primary text-primary" : ""
+              }`}
+            >
+              <span className="inline-flex items-center gap-2">
+                <Filter className="h-4 w-4" />
+                Filter
+              </span>
+              {categoryFilter !== "all" && (
+                <span className="max-w-24 truncate text-xs font-semibold">{categoryFilter}</span>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>Agent category</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="cursor-pointer justify-between"
+              onClick={() => setCategoryFilter("all")}
+            >
+              All categories
+              {categoryFilter === "all" && <Check className="h-4 w-4" />}
+            </DropdownMenuItem>
+            {categoryOptions.map((category) => (
+              <DropdownMenuItem
+                key={category}
+                className="cursor-pointer justify-between"
+                onClick={() => setCategoryFilter(category)}
+              >
+                <span className="truncate">{category}</span>
+                {categoryFilter === category && <Check className="h-4 w-4" />}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {hasActiveFilters && (
           <Button

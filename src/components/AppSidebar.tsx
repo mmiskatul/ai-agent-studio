@@ -2,83 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import {
-  Bot,
-  CircleUserRound,
-  Compass,
-  LayoutDashboard,
-  LogOut,
-  MessageCircle,
-  Users,
-} from "lucide-react";
-import {
-  fetchBackendAgents,
-  fetchLatestBackendAgentResponseHistory,
-  isAgentActive,
-} from "@/lib/agent-api";
+import { useMemo } from "react";
+import { Bot, CircleUserRound, Compass, LayoutDashboard, LogOut, Users } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const { accessToken, refreshAccessToken, signOut } = useAuth();
-  const [chatHref, setChatHref] = useState("/agents");
-
-  useEffect(() => {
-    if (!accessToken) {
-      setChatHref("/agents");
-      return;
-    }
-
-    const token = accessToken;
-    let cancelled = false;
-
-    async function resolveChatHref() {
-      try {
-        const latestHistory = await fetchLatestBackendAgentResponseHistory(
-          token,
-          refreshAccessToken,
-        );
-
-        if (!cancelled && latestHistory.agent_id) {
-          setChatHref(`/agents/${latestHistory.agent_id}/chat`);
-          return;
-        }
-      } catch {
-        // Fall back to the first active agent when there is no latest conversation.
-      }
-
-      try {
-        const agents = await fetchBackendAgents(token, refreshAccessToken);
-        const chatAgent = agents.find(isAgentActive) ?? agents[0];
-
-        if (!cancelled) {
-          setChatHref(chatAgent ? `/agents/${chatAgent.id}/chat` : "/agents");
-        }
-      } catch {
-        if (!cancelled) {
-          setChatHref("/agents");
-        }
-      }
-    }
-
-    resolveChatHref();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [accessToken, refreshAccessToken]);
+  const { signOut } = useAuth();
 
   const navItems = useMemo(
     () => [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { label: "Explore Agents", href: "/explore-agents", icon: Compass },
-      { label: "Chat", href: chatHref, icon: MessageCircle },
       { label: "Agents", href: "/agents", icon: Users },
       { label: "Profile", href: "/profile", icon: CircleUserRound },
     ],
-    [chatHref],
+    [],
   );
 
   return (
@@ -90,8 +30,7 @@ export function AppSidebar() {
 
       <nav className="flex-1 space-y-1 p-3">
         {navItems.map((item) => {
-          const active =
-            item.label === "Chat" ? pathname.includes("/chat") : pathname === item.href;
+          const active = pathname === item.href;
           return (
             <Link
               key={item.label}

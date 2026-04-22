@@ -2,14 +2,20 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowUpRight, Bot, BriefcaseBusiness, Filter, Search } from "lucide-react";
+import { ArrowUpRight, Bot, BriefcaseBusiness, Check, Filter, Search } from "lucide-react";
 import { fetchBackendAgents, isAgentActive, type Agent } from "@/lib/agent-api";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-
-const defaultCategories = ["All", "Analytics", "Design", "Engineering", "Legal", "Sales", "HR"];
 
 function getAgentCategory(agent: Agent) {
   return agent.template_type || agent.role || "Custom";
@@ -48,9 +54,10 @@ export default function ExploreAgentsPage() {
     loadAgents();
   }, [accessToken, authLoading, refreshAccessToken]);
 
-  const categories = Array.from(
-    new Set([...defaultCategories, ...agents.map((agent) => getAgentCategory(agent))]),
-  );
+  const categories = [
+    "All",
+    ...Array.from(new Set(agents.map((agent) => getAgentCategory(agent)))),
+  ];
 
   const filteredAgents = agents.filter((agent) => {
     const query = search.toLowerCase();
@@ -111,26 +118,37 @@ export default function ExploreAgentsPage() {
               className="h-10 rounded-lg bg-card pl-10"
             />
           </div>
-          <Button variant="outline" className="h-10 gap-2 rounded-lg bg-card px-5">
-            <Filter className="h-4 w-4" />
-            Filter
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className={`h-10 gap-2 rounded-lg bg-card px-5 ${
+                  category !== "All" ? "border-primary text-primary" : ""
+                }`}
+              >
+                <Filter className="h-4 w-4" />
+                Filter
+                {category !== "All" && (
+                  <span className="max-w-24 truncate text-xs font-semibold">{category}</span>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Agent category</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {categories.map((item) => (
+                <DropdownMenuItem
+                  key={item}
+                  className="flex cursor-pointer items-center justify-between capitalize"
+                  onClick={() => setCategory(item)}
+                >
+                  {item}
+                  {category === item && <Check className="h-4 w-4" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-      </div>
-
-      <div className="mb-10 flex flex-wrap gap-2">
-        {categories.map((item) => (
-          <Button
-            key={item}
-            type="button"
-            size="sm"
-            variant={category === item ? "default" : "outline"}
-            className="rounded-lg px-4 capitalize"
-            onClick={() => setCategory(item)}
-          >
-            {item}
-          </Button>
-        ))}
       </div>
 
       {loading ? (
