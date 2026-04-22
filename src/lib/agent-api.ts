@@ -369,17 +369,15 @@ async function generateBackendAgentResponseRequest(
   chatId: string | null,
   accessToken: string,
 ): Promise<AgentResponseGenerateResult> {
-  const response = await fetch("/backend/api/chat/send", {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}/response`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify({
-      message: content,
-      session_id: sessionIdForAgent(agentId),
+      content,
       chat_id: chatId || undefined,
-      agent_id: agentId,
     }),
   });
 
@@ -393,15 +391,14 @@ async function generateBackendAgentResponseRequest(
     throw new Error(body.detail || "Failed to generate agent response");
   }
 
-  const parsedBody = body as StructuredChatResponse;
+  const parsedBody = body as AgentResponseGenerateResult;
 
   return {
-    agent_id: parsedBody.agent.id,
-    agent_name: parsedBody.agent.name,
+    agent_id: parsedBody.agent_id,
+    agent_name: parsedBody.agent_name,
     chat_id: parsedBody.chat_id,
-    content: normalizeAgentResponseContent(parsedBody.response || ""),
-    memory_summary: normalizeMemorySummary(parsedBody.system_summary),
-    structured_response: parsedBody,
+    content: normalizeAgentResponseContent(parsedBody.content || ""),
+    memory_summary: normalizeMemorySummary(parsedBody.memory_summary),
   };
 }
 
@@ -424,11 +421,19 @@ async function fetchBackendAgentResponseHistoryRequest(
   chatId: string | null,
   accessToken: string,
 ) {
-  const response = await fetch(`/backend/api/chat/history/${sessionIdForAgent(agentId)}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
+  const params = new URLSearchParams();
+  if (chatId) {
+    params.set("chat_id", chatId);
+  }
+  const query = params.toString();
+  const response = await fetch(
+    `/backend/api/v1/agents/${agentId}/response/history${query ? `?${query}` : ""}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
     },
-  });
+  );
 
   const body = await response.json().catch(() => ({}));
 
@@ -436,7 +441,7 @@ async function fetchBackendAgentResponseHistoryRequest(
     throw new Error(body.detail || "Failed to load chat history");
   }
 
-  return normalizeStructuredHistory(agentId, chatId, body);
+  return normalizeBackendAgentResponseHistory(body);
 }
 
 export async function fetchBackendAgentResponseHistory(

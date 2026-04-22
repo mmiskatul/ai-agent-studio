@@ -49,7 +49,6 @@ export default function NewAgentPage() {
   const [name, setName] = useState("");
   const [purpose, setPurpose] = useState("");
   const [templateType, setTemplateType] = useState("blank");
-  const [category, setCategory] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [welcomeMessage, setWelcomeMessage] = useState("");
   const [activeTab, setActiveTab] = useState("Setup");
@@ -85,7 +84,7 @@ export default function NewAgentPage() {
         {
           name: name.trim(),
           shortDescription: purpose.trim(),
-          categoryTag: category.trim() || undefined,
+          categoryTag: templateType,
           baseTemplate: templateType,
         },
         accessToken,
@@ -110,7 +109,7 @@ export default function NewAgentPage() {
         {
           name: name.trim(),
           shortDescription: purpose.trim(),
-          categoryTag: category.trim() || undefined,
+          categoryTag: templateType,
           baseTemplate: templateType,
         },
         accessToken,
@@ -136,7 +135,7 @@ export default function NewAgentPage() {
           name: name.trim(),
           shortDescription: purpose.trim(),
           baseTemplate: templateType,
-          categoryTag: category.trim() || undefined,
+          categoryTag: templateType,
           systemPrompt:
             systemPrompt.trim() ||
             `You are ${name.trim()}, an AI agent that helps with: ${purpose.trim()}`,
@@ -261,34 +260,19 @@ export default function NewAgentPage() {
                 />
               </div>
 
-              <div className="grid gap-5 md:grid-cols-2">
-                <div>
-                  <Label className="text-sm font-bold text-foreground">Base Template</Label>
-                  <Select value={templateType} onValueChange={setTemplateType}>
-                    <SelectTrigger className="mt-2 h-12 rounded-lg bg-card">
-                      <SelectValue placeholder="Blank Canvas" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="blank">Blank Canvas</SelectItem>
-                      <SelectItem value="analytics">Analytics</SelectItem>
-                      <SelectItem value="sales">Sales</SelectItem>
-                      <SelectItem value="support">Support</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="category" className="text-sm font-bold text-foreground">
-                    Category Tag
-                  </Label>
-                  <Input
-                    id="category"
-                    value={category}
-                    onChange={(event) => setCategory(event.target.value)}
-                    placeholder="e.g. Operations"
-                    className="mt-2 h-12 rounded-lg bg-card"
-                  />
-                </div>
+              <div>
+                <Label className="text-sm font-bold text-foreground">Base Template</Label>
+                <Select value={templateType} onValueChange={setTemplateType}>
+                  <SelectTrigger className="mt-2 h-12 rounded-lg bg-card">
+                    <SelectValue placeholder="Blank Canvas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="blank">Blank Canvas</SelectItem>
+                    <SelectItem value="analytics">Analytics</SelectItem>
+                    <SelectItem value="sales">Sales</SelectItem>
+                    <SelectItem value="support">Support</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           )}
@@ -327,8 +311,9 @@ export default function NewAgentPage() {
                   value={systemPrompt}
                   onChange={(event) => setSystemPrompt(event.target.value)}
                   placeholder="You are a helpful AI assistant specialized in..."
-                  rows={13}
-                  className="mt-2 rounded-lg bg-card font-mono text-sm"
+                  rows={18}
+                  wrap="soft"
+                  className="mt-2 min-h-[460px] resize-y whitespace-pre-wrap break-words rounded-lg bg-card font-mono text-sm leading-6"
                 />
               </div>
 

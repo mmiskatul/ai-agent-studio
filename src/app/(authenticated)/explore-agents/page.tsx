@@ -209,7 +209,7 @@ export default function ExploreAgentsPage() {
                     <p className="mt-1 text-sm font-bold text-foreground">{agent.role}</p>
                   </div>
 
-                  <Link href={`/agents/${agent.id}/chat`}>
+                  <Link href={`/agents/${agent.id}/chat?name=${encodeURIComponent(agent.name)}`}>
                     <Button size="sm" className="gap-2 rounded-lg px-5">
                       Chat
                       <ArrowUpRight className="h-4 w-4" />

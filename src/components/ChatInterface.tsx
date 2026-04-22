@@ -127,6 +127,7 @@ export function ChatInterface({
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const welcomeMessage =
     agent.welcome_message?.trim() ||
     `Hi, I'm ${agent.name}. I can help with ${
@@ -136,6 +137,13 @@ export function ChatInterface({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingContent]);
+
+  useEffect(() => {
+    const textarea = inputRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+  }, [input]);
 
   function handleSend() {
     const text = input.trim();
@@ -357,8 +365,9 @@ export function ChatInterface({
       </div>
 
       <div className="border-t border-border bg-card p-4">
-        <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-full border border-border bg-background px-5 py-2 shadow-sm">
-          <input
+        <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-border bg-background px-5 py-2 shadow-sm">
+          <textarea
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -368,7 +377,8 @@ export function ChatInterface({
               }
             }}
             placeholder="Ask your agent anything..."
-            className="h-9 flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-muted-foreground"
+            rows={1}
+            className="max-h-40 min-h-9 flex-1 resize-none overflow-y-auto bg-transparent py-2 text-sm font-medium leading-5 outline-none placeholder:text-muted-foreground"
             disabled={isLoading}
           />
           <Button

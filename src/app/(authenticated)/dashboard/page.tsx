@@ -274,7 +274,9 @@ export default function DashboardPage() {
                       <TableCell className="text-muted-foreground">{agent.category}</TableCell>
                       <TableCell className="text-right">
                         {agent.status === "active" ? (
-                          <Link href={`/agents/${agent.id}/chat`}>
+                          <Link
+                            href={`/agents/${agent.id}/chat?name=${encodeURIComponent(agent.name)}`}
+                          >
                             <Button size="sm">Chat</Button>
                           </Link>
                         ) : (

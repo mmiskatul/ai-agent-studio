@@ -1,11 +1,7 @@
-import type { Metadata } from "next";
+/* eslint-disable react-refresh/only-export-components */
 import "@/styles.css";
 import { Toaster } from "@/components/ui/sonner";
-
-export const metadata: Metadata = {
-  title: "AgentHub - AI Agent Platform",
-  description: "Create and manage AI agents with AgentHub",
-};
+export { metadata } from "@/app/metadata";
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

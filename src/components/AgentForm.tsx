@@ -111,8 +111,9 @@ export function AgentForm({
           value={systemPrompt}
           onChange={(e) => setSystemPrompt(e.target.value)}
           placeholder="Define how the agent should behave..."
-          rows={6}
-          className="mt-1 font-mono text-sm"
+          rows={14}
+          wrap="soft"
+          className="mt-1 min-h-[340px] resize-y whitespace-pre-wrap break-words font-mono text-sm leading-6"
         />
         {errors.systemPrompt && (
           <p className="mt-1 text-xs text-destructive">{errors.systemPrompt}</p>
