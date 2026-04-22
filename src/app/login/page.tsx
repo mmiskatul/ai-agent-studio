@@ -43,62 +43,79 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="auth-card w-full max-w-sm p-8">
-        <div className="mb-6 flex flex-col items-center">
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-            <Bot className="h-6 w-6 text-primary" />
-          </div>
-          <h1 className="text-xl font-bold text-foreground">Welcome back</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Sign in to AgentHub</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="rounded-lg bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
-              {error}
+    <div className="min-h-screen bg-background px-4 py-6">
+      <div className="mx-auto grid min-h-[calc(100vh-3rem)] w-full max-w-6xl overflow-hidden rounded-3xl bg-background lg:grid-cols-[minmax(0,1.1fr)_420px]">
+        <section className="relative flex min-h-[320px] items-center justify-center px-8 py-10 lg:min-h-0 lg:px-12">
+          <div className="max-w-xl text-center">
+            <div className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
+              <Bot className="h-8 w-8" />
             </div>
-          )}
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="mt-1"
-            />
+            <h1 className="text-4xl font-bold tracking-tight text-foreground">AgentHub</h1>
+            <p className="mt-4 max-w-lg text-base leading-7 text-muted-foreground">
+              Build, organize, and run your AI agents from one workspace. Sign in to continue to
+              your dashboard, agent chat history, and creation tools.
+            </p>
           </div>
-          <div>
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="********"
-              className="mt-1"
-            />
-          </div>
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Signing in..." : "Sign In"}
-          </Button>
-        </form>
+        </section>
 
-        <div className="mt-4 space-y-2 text-center text-sm text-muted-foreground">
-          <p>
-            <Link href="/forgot-password" className="text-primary hover:underline">
-              Forgot password?
-            </Link>
-          </p>
-          <p>
-            Don't have an account?{" "}
-            <Link href="/register" className="text-primary hover:underline">
-              Sign up
-            </Link>
-          </p>
-        </div>
+        <section className="flex items-center justify-center bg-background px-6 py-10 sm:px-10">
+          <div className="w-full max-w-sm">
+            <div className="mb-6">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+                <Bot className="h-6 w-6 text-primary" />
+              </div>
+              <h2 className="text-2xl font-bold text-foreground">Welcome back</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Sign in to AgentHub</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <div className="rounded-lg bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
+                  {error}
+                </div>
+              )}
+              <div>
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="********"
+                  className="mt-1"
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? "Signing in..." : "Sign In"}
+              </Button>
+            </form>
+
+            <div className="mt-4 space-y-2 text-center text-sm text-muted-foreground">
+              <p>
+                <Link href="/forgot-password" className="text-primary hover:underline">
+                  Forgot password?
+                </Link>
+              </p>
+              <p>
+                Don't have an account?{" "}
+                <Link href="/register" className="text-primary hover:underline">
+                  Sign up
+                </Link>
+              </p>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   );
