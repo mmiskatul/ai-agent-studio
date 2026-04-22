@@ -14,7 +14,6 @@ import {
 } from "@/lib/agent-api";
 import { useAuth } from "@/hooks/use-auth";
 import { AgentForm } from "@/components/AgentForm";
-import { AgentTestDrawer } from "@/components/AgentTestDrawer";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -55,8 +54,6 @@ export default function AgentsPage() {
   const [sortBy, setSortBy] = useState("updated");
   const [editTarget, setEditTarget] = useState<Agent | null>(null);
   const [loadingEditId, setLoadingEditId] = useState<string | null>(null);
-  const [testAgentId, setTestAgentId] = useState<string | null>(null);
-  const [showTestingDrawer, setShowTestingDrawer] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -205,12 +202,6 @@ export default function AgentsPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl p-6">
-      <AgentTestDrawer
-        agentId={testAgentId}
-        open={showTestingDrawer}
-        onOpenChange={setShowTestingDrawer}
-      />
-
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Agents</h1>
@@ -382,24 +373,26 @@ export default function AgentsPage() {
                         <Pencil className="h-3.5 w-3.5" />
                         {loadingEditId === agent.id ? "Loading..." : "Edit"}
                       </Button>
-                      <Button
-                        size="sm"
-                        className="gap-1.5"
-                        disabled={!isAgentActive(agent)}
-                        title={
-                          isAgentActive(agent)
-                            ? "Test this agent"
-                            : "Activate this agent before testing chat"
-                        }
-                        onClick={() => {
-                          if (!isAgentActive(agent)) return;
-                          setTestAgentId(agent.id);
-                          setShowTestingDrawer(true);
-                        }}
-                      >
-                        <MessageSquare className="h-3.5 w-3.5" />
-                        Test
-                      </Button>
+                      {isAgentActive(agent) ? (
+                        <Link
+                          href={`/agents/${agent.id}/chat?name=${encodeURIComponent(agent.name)}`}
+                        >
+                          <Button size="sm" className="gap-1.5">
+                            <MessageSquare className="h-3.5 w-3.5" />
+                            Chat
+                          </Button>
+                        </Link>
+                      ) : (
+                        <Button
+                          size="sm"
+                          className="gap-1.5"
+                          disabled
+                          title="Activate this agent before opening chat"
+                        >
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          Chat
+                        </Button>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"

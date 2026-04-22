@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo } from "react";
 import { Bot, CircleUserRound, Compass, LayoutDashboard, LogOut, Users } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
+import { SIGN_IN_ROUTE } from "@/lib/routes";
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { signOut } = useAuth();
 
   const navItems = useMemo(
@@ -20,6 +22,11 @@ export function AppSidebar() {
     ],
     [],
   );
+
+  async function handleSignOut() {
+    await signOut();
+    router.replace(SIGN_IN_ROUTE);
+  }
 
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-border bg-sidebar">
@@ -52,7 +59,7 @@ export function AppSidebar() {
         <Button
           variant="ghost"
           className="w-full justify-start gap-3 text-muted-foreground"
-          onClick={signOut}
+          onClick={handleSignOut}
         >
           <LogOut className="h-4 w-4" />
           Sign Out
