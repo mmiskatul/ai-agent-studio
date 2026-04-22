@@ -12,6 +12,7 @@ node_modules
 dist
 dist-ssr
 .output
+backend/
 
 *.tsbuildinfo
 __pycache__/
