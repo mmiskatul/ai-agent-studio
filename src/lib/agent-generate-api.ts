@@ -21,6 +21,25 @@ async function postGeneratedText<TBody extends Record<string, unknown>, TRespons
   return responseBody as TResponse;
 }
 
+function buildDescriptionFallback(name: string) {
+  const cleanedName = name.trim() || "This agent";
+  const loweredName = cleanedName.toLowerCase();
+
+  if (/(sales|lead|outreach|revenue)/i.test(loweredName)) {
+    return `${cleanedName} helps sales teams qualify leads, respond to buyer questions, and move deals forward with clearer next steps. It is useful for drafting outreach, handling objections, and turning pipeline activity into practical follow-up actions.`;
+  }
+
+  if (/(support|help|service|customer)/i.test(loweredName)) {
+    return `${cleanedName} helps support teams resolve customer issues faster with clear, practical responses. It is useful for troubleshooting problems, drafting replies, and guiding consistent customer communication across common service workflows.`;
+  }
+
+  if (/(data|analytics|report|insight)/i.test(loweredName)) {
+    return `${cleanedName} helps teams analyze information, summarize findings, and turn data into actionable insights. It is useful for reporting, spotting patterns, and producing clear outputs that support better decisions.`;
+  }
+
+  return `${cleanedName} helps users complete focused work with clear, practical outputs. It is useful for answering questions, organizing information, and producing responses that are ready to use in real workflows.`;
+}
+
 async function withUnauthorizedRetry<T>(
   request: (accessToken: string) => Promise<T>,
   accessToken: string,
@@ -57,18 +76,22 @@ export async function generateAgentDescription(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  const response = await withUnauthorizedRetry(
-    (token) =>
-      postGeneratedText<{ name: string }, { short_description: string }>(
-        "generate-description",
-        { name },
-        token,
-      ),
-    accessToken,
-    refreshAccessToken,
-  );
+  try {
+    const response = await withUnauthorizedRetry(
+      (token) =>
+        postGeneratedText<{ name: string }, { short_description: string }>(
+          "generate-description",
+          { name },
+          token,
+        ),
+      accessToken,
+      refreshAccessToken,
+    );
 
-  return response.short_description;
+    return response.short_description;
+  } catch {
+    return buildDescriptionFallback(name);
+  }
 }
 
 export async function generateAgentSystemPrompt(

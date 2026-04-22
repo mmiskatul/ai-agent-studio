@@ -9,7 +9,6 @@ import {
   type DashboardAgentSummary,
 } from "@/lib/dashboard-api";
 import { useAuth } from "@/hooks/use-auth";
-import { AgentTestDrawer } from "@/components/AgentTestDrawer";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -150,8 +149,6 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl p-6">
-      <AgentTestDrawer />
-
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Overview</h1>
