@@ -114,7 +114,6 @@ export default function EditAgentPage() {
             role: agent.role,
             purpose: agent.purpose,
             templateType: agent.template_type ?? "",
-            systemPrompt: agent.system_prompt,
             status: agent.status,
           }}
           onSubmit={handleSubmit}

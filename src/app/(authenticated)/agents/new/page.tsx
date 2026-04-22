@@ -1,31 +1,21 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { Bolt, BookOpen, Save, SlidersHorizontal, Sparkles, Zap } from "lucide-react";
-import {
-  generateAgentDescription,
-  generateAgentSystemPrompt,
-  generateAgentWelcomeMessage,
-} from "@/lib/agent-generate-api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Bolt, ChevronDown, Save, SlidersHorizontal, Sparkles, Zap } from "lucide-react";
+import { generateAgentDescription, generateAgentWelcomeMessage } from "@/lib/agent-generate-api";
 import { createBuilderAgent } from "@/lib/builder-agent-api";
+import { fetchBackendAgents, type Agent } from "@/lib/agent-api";
 import { AUTHENTICATED_HOME } from "@/lib/routes";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { buildStandardSystemPrompt } from "@/lib/standard-agent-prompt";
 
 const tabs = [
   { label: "Setup", icon: SlidersHorizontal },
-  { label: "Instructions", icon: BookOpen },
   { label: "Advanced", icon: Bolt },
 ];
 
@@ -34,16 +24,59 @@ export default function NewAgentPage() {
   const { accessToken, refreshAccessToken } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
-  const [isGeneratingSystemPrompt, setIsGeneratingSystemPrompt] = useState(false);
   const [isGeneratingWelcomeMessage, setIsGeneratingWelcomeMessage] = useState(false);
   const [error, setError] = useState("");
   const [name, setName] = useState("");
   const [purpose, setPurpose] = useState("");
+  const [purposeSource, setPurposeSource] = useState<"manual" | "ai">("manual");
   const [templateType, setTemplateType] = useState("blank");
-  const [systemPrompt, setSystemPrompt] = useState("");
+  const [savedAgents, setSavedAgents] = useState<Agent[]>([]);
   const [welcomeMessage, setWelcomeMessage] = useState("");
   const [activeTab, setActiveTab] = useState("Setup");
   const [temperature, setTemperature] = useState(0.7);
+  const [isTemplateMenuOpen, setIsTemplateMenuOpen] = useState(false);
+  const templateInputRef = useRef<HTMLInputElement>(null);
+
+  function displayTemplateLabel(option: string) {
+    return option === "blank" ? "" : option;
+  }
+
+  useEffect(() => {
+    async function loadTemplateOptions() {
+      if (!accessToken) return;
+
+      try {
+        const agents = await fetchBackendAgents(accessToken, refreshAccessToken);
+        setSavedAgents(agents);
+      } catch (err) {
+        console.error("Failed to load template options:", err);
+      }
+    }
+
+    loadTemplateOptions();
+  }, [accessToken, refreshAccessToken]);
+
+  const templateOptions = useMemo(() => {
+    const presetOptions = ["blank", "analytics", "sales", "support", "research", "operations"];
+    const customOptions = Array.from(
+      new Set(
+        savedAgents
+          .map((agent) => agent.template_type?.trim())
+          .filter((value): value is string => Boolean(value) && !presetOptions.includes(value)),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+
+    return [...presetOptions, ...customOptions];
+  }, [savedAgents]);
+
+  const filteredTemplateOptions = useMemo(() => {
+    const query = templateType.trim().toLowerCase();
+    if (!query || templateType === "blank") {
+      return templateOptions;
+    }
+
+    return templateOptions.filter((option) => option.toLowerCase().includes(query));
+  }, [templateOptions, templateType]);
 
   async function handleGenerateDescription() {
     if (!name.trim() || !accessToken) return;
@@ -57,36 +90,12 @@ export default function NewAgentPage() {
         refreshAccessToken,
       );
       setPurpose(generatedDescription);
+      setPurposeSource("ai");
     } catch (err) {
       console.error("Failed to generate description:", err);
       setError(err instanceof Error ? err.message : "Failed to generate description");
     } finally {
       setIsGeneratingDescription(false);
-    }
-  }
-
-  async function handleGenerateSystemPrompt() {
-    if (!name.trim() || !purpose.trim() || !accessToken) return;
-
-    setIsGeneratingSystemPrompt(true);
-    setError("");
-    try {
-      const generatedPrompt = await generateAgentSystemPrompt(
-        {
-          name: name.trim(),
-          shortDescription: purpose.trim(),
-          categoryTag: templateType,
-          baseTemplate: templateType,
-        },
-        accessToken,
-        refreshAccessToken,
-      );
-      setSystemPrompt(generatedPrompt);
-    } catch (err) {
-      console.error("Failed to generate system prompt:", err);
-      setError(err instanceof Error ? err.message : "Failed to generate system prompt");
-    } finally {
-      setIsGeneratingSystemPrompt(false);
     }
   }
 
@@ -116,20 +125,32 @@ export default function NewAgentPage() {
   }
 
   async function handleCreate(status: string) {
-    if (!name.trim() || !purpose.trim() || !accessToken) return;
+    const resolvedTemplateType = templateType.trim();
+    if (!name.trim() || !purpose.trim() || !resolvedTemplateType || !accessToken) return;
 
     setIsSubmitting(true);
     setError("");
     try {
+      const resolvedSystemPrompt =
+        purposeSource === "ai"
+          ? purpose.trim()
+          : buildStandardSystemPrompt({
+              name,
+              role:
+                resolvedTemplateType === "blank"
+                  ? "AI assistant"
+                  : `${resolvedTemplateType} specialist`,
+              purpose,
+              templateType: resolvedTemplateType,
+            });
+
       await createBuilderAgent(
         {
           name: name.trim(),
           shortDescription: purpose.trim(),
-          baseTemplate: templateType,
-          categoryTag: templateType,
-          systemPrompt:
-            systemPrompt.trim() ||
-            `You are ${name.trim()}, an AI agent that helps with: ${purpose.trim()}`,
+          baseTemplate: resolvedTemplateType,
+          categoryTag: resolvedTemplateType,
+          systemPrompt: resolvedSystemPrompt,
           welcomeMessage: welcomeMessage.trim() || undefined,
           temperature,
           status,
@@ -224,7 +245,7 @@ export default function NewAgentPage() {
               <div>
                 <div className="flex items-center justify-between gap-3">
                   <Label htmlFor="agent-purpose" className="text-sm font-bold text-foreground">
-                    Short Description
+                    Purpose
                   </Label>
                   <Button
                     type="button"
@@ -241,73 +262,89 @@ export default function NewAgentPage() {
                     />
                   </Button>
                 </div>
+                <p className="mt-2 text-xs font-medium text-muted-foreground">
+                  Describe what the agent should do. A standard system prompt will be generated
+                  automatically when you save.
+                </p>
                 <Textarea
                   id="agent-purpose"
                   value={purpose}
-                  onChange={(event) => setPurpose(event.target.value)}
-                  placeholder="What does this agent do?"
-                  rows={5}
+                  onChange={(event) => {
+                    setPurpose(event.target.value);
+                    setPurposeSource("manual");
+                  }}
+                  placeholder="Example: Help users answer sales questions, qualify leads, and suggest the next best action."
+                  rows={6}
                   className="mt-2 rounded-lg bg-card"
                 />
               </div>
 
               <div>
                 <Label className="text-sm font-bold text-foreground">Base Template</Label>
-                <Select value={templateType} onValueChange={setTemplateType}>
-                  <SelectTrigger className="mt-2 h-12 rounded-lg bg-card">
-                    <SelectValue placeholder="Blank Canvas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="blank">Blank Canvas</SelectItem>
-                    <SelectItem value="analytics">Analytics</SelectItem>
-                    <SelectItem value="sales">Sales</SelectItem>
-                    <SelectItem value="support">Support</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="relative mt-2 w-full max-w-xs">
+                  <Input
+                    ref={templateInputRef}
+                    value={displayTemplateLabel(templateType)}
+                    onChange={(event) => {
+                      setTemplateType(event.target.value.trim() ? event.target.value : "blank");
+                      setIsTemplateMenuOpen(true);
+                    }}
+                    onFocus={(event) => {
+                      event.currentTarget.select();
+                    }}
+                    onClick={(event) => {
+                      event.currentTarget.select();
+                    }}
+                    onBlur={() => {
+                      window.setTimeout(() => setIsTemplateMenuOpen(false), 120);
+                    }}
+                    placeholder="Select or type a base template"
+                    className="h-10 rounded-lg bg-card pr-9 text-sm"
+                  />
+                  <button
+                    type="button"
+                    aria-label="Show template options"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      setIsTemplateMenuOpen(true);
+                      templateInputRef.current?.focus();
+                    }}
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+
+                  {isTemplateMenuOpen || !templateType.trim() || templateType === "blank" ? (
+                    <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-sm">
+                      {filteredTemplateOptions.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          className="block w-full px-3 py-2 text-left text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground"
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            setTemplateType(option);
+                            setIsTemplateMenuOpen(false);
+                            templateInputRef.current?.focus();
+                          }}
+                        >
+                          {displayTemplateLabel(option) || "\u00A0"}
+                        </button>
+                      ))}
+                      {filteredTemplateOptions.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-muted-foreground">
+                          Press save to create this new template
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
           )}
 
-          {activeTab === "Instructions" && (
+          {activeTab === "Advanced" && (
             <div className="space-y-7">
-              <div className="flex items-center gap-3 rounded-lg border border-warning/30 bg-warning/10 px-5 py-4 text-sm font-bold text-warning-foreground">
-                <Zap className="h-4 w-4 text-warning-foreground" />
-                Be specific. Define response format and how to handle unknown queries.
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between gap-3">
-                  <Label htmlFor="system-prompt" className="text-sm font-bold text-foreground">
-                    System Prompt
-                  </Label>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    className="h-8 w-8 rounded-lg bg-card"
-                    title="Generate system prompt"
-                    aria-label="Generate system prompt"
-                    disabled={
-                      !name.trim() || !purpose.trim() || !accessToken || isGeneratingSystemPrompt
-                    }
-                    onClick={handleGenerateSystemPrompt}
-                  >
-                    <Sparkles
-                      className={`h-4 w-4 ${isGeneratingSystemPrompt ? "animate-pulse" : ""}`}
-                    />
-                  </Button>
-                </div>
-                <Textarea
-                  id="system-prompt"
-                  value={systemPrompt}
-                  onChange={(event) => setSystemPrompt(event.target.value)}
-                  placeholder="You are a helpful AI assistant specialized in..."
-                  rows={18}
-                  wrap="soft"
-                  className="mt-2 min-h-[460px] resize-y whitespace-pre-wrap break-words rounded-lg bg-card font-mono text-sm leading-6"
-                />
-              </div>
-
               <div>
                 <div className="flex items-center justify-between gap-3">
                   <Label htmlFor="welcome-message" className="text-sm font-bold text-foreground">
@@ -338,11 +375,7 @@ export default function NewAgentPage() {
                   className="mt-2 h-12 rounded-lg bg-card"
                 />
               </div>
-            </div>
-          )}
 
-          {activeTab === "Advanced" && (
-            <div className="space-y-7">
               <div className="rounded-lg border border-border bg-card px-6 py-6">
                 <div className="mb-7 flex items-start justify-between gap-4">
                   <div>

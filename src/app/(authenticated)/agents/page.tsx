@@ -425,7 +425,6 @@ export default function AgentsPage() {
                 role: editTarget.role,
                 purpose: editTarget.purpose,
                 templateType: editTarget.template_type ?? "",
-                systemPrompt: editTarget.system_prompt,
                 status: editTarget.status,
               }}
               onSubmit={handleUpdate}

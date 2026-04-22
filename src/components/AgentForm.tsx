@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { buildStandardSystemPrompt } from "@/lib/standard-agent-prompt";
 
 interface AgentFormProps {
   initialValues?: {
@@ -10,7 +11,6 @@ interface AgentFormProps {
     role: string;
     purpose: string;
     templateType: string;
-    systemPrompt: string;
     status: string;
   };
   onSubmit: (values: {
@@ -37,7 +37,6 @@ export function AgentForm({
   const [role, setRole] = useState(initialValues?.role ?? "");
   const [purpose, setPurpose] = useState(initialValues?.purpose ?? "");
   const [templateType, setTemplateType] = useState(initialValues?.templateType ?? "");
-  const [systemPrompt, setSystemPrompt] = useState(initialValues?.systemPrompt ?? "");
   const [status, setStatus] = useState(initialValues?.status ?? "active");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -46,7 +45,6 @@ export function AgentForm({
     if (!name.trim()) errs.name = "Agent name is required";
     if (!role.trim()) errs.role = "Role is required";
     if (!purpose.trim()) errs.purpose = "Purpose is required";
-    if (!systemPrompt.trim()) errs.systemPrompt = "System instructions are required";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -59,7 +57,12 @@ export function AgentForm({
       role: role.trim(),
       purpose: purpose.trim(),
       template_type: templateType,
-      system_prompt: systemPrompt.trim(),
+      system_prompt: buildStandardSystemPrompt({
+        name,
+        role,
+        purpose,
+        templateType,
+      }),
       status,
     });
   }
@@ -102,22 +105,6 @@ export function AgentForm({
           className="mt-1"
         />
         {errors.purpose && <p className="mt-1 text-xs text-destructive">{errors.purpose}</p>}
-      </div>
-
-      <div>
-        <Label htmlFor="systemPrompt">System Instructions *</Label>
-        <Textarea
-          id="systemPrompt"
-          value={systemPrompt}
-          onChange={(e) => setSystemPrompt(e.target.value)}
-          placeholder="Define how the agent should behave..."
-          rows={14}
-          wrap="soft"
-          className="mt-1 min-h-[340px] resize-y whitespace-pre-wrap break-words font-mono text-sm leading-6"
-        />
-        {errors.systemPrompt && (
-          <p className="mt-1 text-xs text-destructive">{errors.systemPrompt}</p>
-        )}
       </div>
 
       <div>
