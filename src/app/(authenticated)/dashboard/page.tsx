@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { AgentTestDrawer } from "@/components/AgentTestDrawer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -35,6 +36,40 @@ const emptyDashboard: DashboardOverview = {
   categories: [],
   recent_activity: [],
 };
+
+function DashboardSkeleton() {
+  return (
+    <>
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="agent-card flex items-center gap-4 p-5">
+            <Skeleton className="h-12 w-12 rounded-lg" />
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-7 w-16" />
+              <Skeleton className="h-3 w-28" />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="agent-card mb-8 overflow-hidden p-5">
+        <div className="space-y-4">
+          <Skeleton className="h-6 w-40" />
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div key={index} className="flex items-center justify-between gap-4">
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-44" />
+                <Skeleton className="h-3 w-28" />
+              </div>
+              <Skeleton className="h-8 w-16 rounded-md" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
 
 export default function DashboardPage() {
   const { accessToken } = useAuth();
@@ -155,86 +190,88 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
-      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {stats.map((stat) => (
-          <div key={stat.label} className="agent-card flex items-center gap-4 p-5">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-              <stat.icon className="h-5 w-5 text-primary" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
-              <p className="mt-1 text-2xl font-bold text-foreground">{stat.value}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{stat.description}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="agent-card mb-8 overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <div>
-            <h2 className="text-lg font-bold text-foreground">Top agents for you</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Active and recently updated agents ranked first
-            </p>
-          </div>
-        </div>
-
-        {filteredTopAgents.length === 0 ? (
-          <div className="px-5 py-10 text-center text-sm text-muted-foreground">
-            Create agents to see recommendations here.
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="px-5">Agent</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredTopAgents.map((agent: DashboardAgentSummary) => (
-                <TableRow key={agent.id}>
-                  <TableCell className="px-5 font-medium text-foreground">{agent.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{agent.role}</TableCell>
-                  <TableCell>
-                    <span
-                      className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${
-                        agent.status === "active"
-                          ? "bg-success/10 text-success"
-                          : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      {agent.status}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{agent.category}</TableCell>
-                  <TableCell className="text-right">
-                    {agent.status === "active" ? (
-                      <Link href={`/agents/${agent.id}/chat`}>
-                        <Button size="sm">Chat</Button>
-                      </Link>
-                    ) : (
-                      <Button size="sm" disabled>
-                        Chat
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </div>
-
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        </div>
-      ) : null}
+        <DashboardSkeleton />
+      ) : (
+        <>
+          <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {stats.map((stat) => (
+              <div key={stat.label} className="agent-card flex items-center gap-4 p-5">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                  <stat.icon className="h-5 w-5 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
+                  <p className="mt-1 text-2xl font-bold text-foreground">{stat.value}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{stat.description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="agent-card mb-8 overflow-hidden">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div>
+                <h2 className="text-lg font-bold text-foreground">Top agents for you</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Active and recently updated agents ranked first
+                </p>
+              </div>
+            </div>
+
+            {filteredTopAgents.length === 0 ? (
+              <div className="px-5 py-10 text-center text-sm text-muted-foreground">
+                Create agents to see recommendations here.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="px-5">Agent</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredTopAgents.map((agent: DashboardAgentSummary) => (
+                    <TableRow key={agent.id}>
+                      <TableCell className="px-5 font-medium text-foreground">
+                        {agent.name}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{agent.role}</TableCell>
+                      <TableCell>
+                        <span
+                          className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${
+                            agent.status === "active"
+                              ? "bg-success/10 text-success"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {agent.status}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{agent.category}</TableCell>
+                      <TableCell className="text-right">
+                        {agent.status === "active" ? (
+                          <Link href={`/agents/${agent.id}/chat`}>
+                            <Button size="sm">Chat</Button>
+                          </Link>
+                        ) : (
+                          <Button size="sm" disabled>
+                            Chat
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

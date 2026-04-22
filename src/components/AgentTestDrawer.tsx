@@ -4,11 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Bot } from "lucide-react";
 import {
+  deleteBackendAgentResponseMessage,
   fetchBackendAgent,
+  fetchBackendAgentResponseHistory,
   fetchBackendAgents,
-  fetchBackendMessages,
+  generateBackendAgentResponse,
   isAgentActive,
-  sendBackendMessage,
+  updateBackendAgentResponseMessage,
   type Agent,
   type Message,
 } from "@/lib/agent-api";
@@ -31,6 +33,21 @@ interface AgentTestDrawerProps {
   showTrigger?: boolean;
 }
 
+function createOptimisticUserMessage(content: string): Message {
+  const random =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2);
+
+  return {
+    id: `local_${random}`,
+    chat_id: "pending",
+    sender_type: "user",
+    content,
+    created_at: new Date().toISOString(),
+  };
+}
+
 export function AgentTestDrawer({
   agentId,
   open,
@@ -42,6 +59,7 @@ export function AgentTestDrawer({
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [messageActionId, setMessageActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -74,12 +92,13 @@ export function AgentTestDrawer({
         }
 
         setAgent(selectedAgent);
-        const storedMessages = await fetchBackendMessages(
+        const history = await fetchBackendAgentResponseHistory(
           selectedAgent.id,
+          null,
           accessToken,
           refreshAccessToken,
         );
-        setMessages(storedMessages);
+        setMessages(history.messages);
       } catch (err) {
         console.error("Failed to load testing chat:", err);
         setError(err instanceof Error ? err.message : "Failed to load testing chat");
@@ -97,20 +116,81 @@ export function AgentTestDrawer({
 
       setError(null);
       setIsStreaming(true);
+      const optimisticMessage = createOptimisticUserMessage(content);
+      setMessages((prev) => [...prev, optimisticMessage]);
 
       try {
-        const response = await sendBackendMessage(
+        await generateBackendAgentResponse(
           agent.id,
+          content,
+          null,
+          accessToken,
+          refreshAccessToken,
+        );
+        const history = await fetchBackendAgentResponseHistory(
+          agent.id,
+          null,
+          accessToken,
+          refreshAccessToken,
+        );
+        setMessages(history.messages);
+      } catch (err) {
+        console.error("Failed to send testing message:", err);
+        setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id));
+        setError(err instanceof Error ? err.message : "Failed to send message");
+      } finally {
+        setIsStreaming(false);
+      }
+    },
+    [accessToken, agent, refreshAccessToken],
+  );
+
+  const handleDeleteMessage = useCallback(
+    async (messageId: string) => {
+      if (!agent || !accessToken) return;
+
+      setError(null);
+      setMessageActionId(messageId);
+
+      try {
+        const history = await deleteBackendAgentResponseMessage(
+          agent.id,
+          messageId,
+          accessToken,
+          refreshAccessToken,
+        );
+        setMessages(history.messages);
+      } catch (err) {
+        console.error("Failed to delete testing message:", err);
+        setError(err instanceof Error ? err.message : "Failed to delete message");
+      } finally {
+        setMessageActionId(null);
+      }
+    },
+    [accessToken, agent, refreshAccessToken],
+  );
+
+  const handleEditMessage = useCallback(
+    async (messageId: string, content: string) => {
+      if (!agent || !accessToken) return;
+
+      setError(null);
+      setMessageActionId(messageId);
+
+      try {
+        const history = await updateBackendAgentResponseMessage(
+          agent.id,
+          messageId,
           content,
           accessToken,
           refreshAccessToken,
         );
-        setMessages((prev) => [...prev, response.user_message, response.assistant_message]);
+        setMessages(history.messages);
       } catch (err) {
-        console.error("Failed to send testing message:", err);
-        setError(err instanceof Error ? err.message : "Failed to send message");
+        console.error("Failed to edit testing message:", err);
+        setError(err instanceof Error ? err.message : "Failed to edit message");
       } finally {
-        setIsStreaming(false);
+        setMessageActionId(null);
       }
     },
     [accessToken, agent, refreshAccessToken],
@@ -144,6 +224,9 @@ export function AgentTestDrawer({
               isLoading={isStreaming}
               streamingContent=""
               error={error}
+              onDeleteMessage={handleDeleteMessage}
+              onEditMessage={handleEditMessage}
+              messageActionId={messageActionId}
             />
           ) : (
             <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card p-6 text-center">

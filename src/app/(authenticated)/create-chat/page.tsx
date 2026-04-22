@@ -1,11 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { BriefcaseBusiness, MessageSquare, Plus, Send } from "lucide-react";
-import { fetchBackendAgents, isAgentActive, type Agent } from "@/lib/agent-api";
+import { BriefcaseBusiness, MessageSquare, Search, Send, X } from "lucide-react";
+import {
+  fetchBackendAgents,
+  fetchLatestBackendAgentResponseHistory,
+  isAgentActive,
+  type Agent,
+} from "@/lib/agent-api";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -19,7 +26,38 @@ export default function CreateChatPage() {
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [redirecting, setRedirecting] = useState(false);
   const [error, setError] = useState("");
+  const [agentSearch, setAgentSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+
+  const categoryOptions = useMemo(() => {
+    const categories = agents.map((agent) => agent.template_type || "Custom");
+    return Array.from(new Set(categories)).sort((a, b) => a.localeCompare(b));
+  }, [agents]);
+
+  const filteredAgents = useMemo(() => {
+    const query = agentSearch.trim().toLowerCase();
+    return agents.filter((agent) => {
+      const category = agent.template_type || "Custom";
+      const matchesSearch =
+        !query ||
+        agent.name.toLowerCase().includes(query) ||
+        agent.role.toLowerCase().includes(query) ||
+        agent.purpose.toLowerCase().includes(query) ||
+        category.toLowerCase().includes(query);
+      const matchesCategory = categoryFilter === "all" || category === categoryFilter;
+
+      return matchesSearch && matchesCategory;
+    });
+  }, [agentSearch, agents, categoryFilter]);
+
+  const hasAgentFilters = Boolean(agentSearch.trim()) || categoryFilter !== "all";
+
+  function clearAgentFilters() {
+    setAgentSearch("");
+    setCategoryFilter("all");
+  }
 
   function openAgentChat(agentId: string) {
     if (!agentId) return;
@@ -38,6 +76,22 @@ export default function CreateChatPage() {
 
       try {
         setError("");
+        try {
+          const latestHistory = await fetchLatestBackendAgentResponseHistory(
+            accessToken,
+            refreshAccessToken,
+          );
+          if (latestHistory.agent_id) {
+            setRedirecting(true);
+            router.replace(`/agents/${latestHistory.agent_id}/chat`);
+            return;
+          }
+        } catch (latestErr) {
+          if (!(latestErr instanceof Error) || latestErr.message !== "Chat not found") {
+            console.info("No latest chat to open automatically:", latestErr);
+          }
+        }
+
         const data = await fetchBackendAgents(accessToken, refreshAccessToken);
         setAgents(data.filter(isAgentActive));
       } catch (err) {
@@ -49,35 +103,78 @@ export default function CreateChatPage() {
     }
 
     loadAgents();
-  }, [accessToken, authLoading, refreshAccessToken]);
+  }, [accessToken, authLoading, refreshAccessToken, router]);
 
   return (
     <div className="grid h-[calc(100vh-3.5rem)] gap-3 p-4 lg:grid-cols-[274px_minmax(0,1fr)]">
       <aside className="flex min-h-0 flex-col rounded-xl border border-border bg-card">
         <div className="border-b border-border p-4">
           <h1 className="text-lg font-bold text-foreground">Conversations</h1>
-          <div className="mt-4">
-            <Select disabled={loading || agents.length === 0} onValueChange={openAgentChat}>
+          <div className="mt-4 space-y-3">
+            <Select
+              disabled={loading || redirecting || filteredAgents.length === 0}
+              onValueChange={openAgentChat}
+            >
               <SelectTrigger className="h-10 rounded-lg bg-background">
-                <SelectValue placeholder={loading ? "Loading agents..." : "Select agent"} />
+                <SelectValue
+                  placeholder={
+                    redirecting
+                      ? "Opening latest chat..."
+                      : loading
+                        ? "Loading agents..."
+                        : "Select agent"
+                  }
+                />
               </SelectTrigger>
               <SelectContent>
-                {agents.map((agent) => (
+                {filteredAgents.map((agent) => (
                   <SelectItem key={agent.id} value={agent.id}>
                     {agent.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={agentSearch}
+                onChange={(event) => setAgentSearch(event.target.value)}
+                placeholder="Search chat agents..."
+                className="h-10 rounded-lg bg-background pl-10"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger className="h-10 min-w-0 flex-1 rounded-lg bg-background">
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All categories</SelectItem>
+                  {categoryOptions.map((category) => (
+                    <SelectItem key={category} value={category}>
+                      {category}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {hasAgentFilters && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10 shrink-0 rounded-lg bg-background"
+                  onClick={clearAgentFilters}
+                  aria-label="Clear agent filters"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
-          <Button className="mt-4 w-full gap-2 rounded-lg">
-            <Plus className="h-4 w-4" />
-            New Chat
-          </Button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          {loading ? (
+          {loading || redirecting ? (
             <div className="flex h-full items-center justify-center">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             </div>
@@ -95,9 +192,17 @@ export default function CreateChatPage() {
                 Activate an agent before starting a chat.
               </p>
             </div>
+          ) : filteredAgents.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center px-4 text-center">
+              <MessageSquare className="mb-3 h-10 w-10 text-muted-foreground/40" />
+              <p className="text-sm font-medium text-foreground">No chat agents match</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Clear filters or search another agent.
+              </p>
+            </div>
           ) : (
             <div className="space-y-2">
-              {agents.map((agent) => (
+              {filteredAgents.map((agent) => (
                 <button
                   key={agent.id}
                   type="button"

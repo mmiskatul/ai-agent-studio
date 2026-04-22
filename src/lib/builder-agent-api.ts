@@ -5,7 +5,6 @@ export interface CreateBuilderAgentInput {
   categoryTag?: string;
   systemPrompt: string;
   welcomeMessage?: string;
-  llmEngine: string;
   temperature: number;
   status: string;
 }
@@ -24,7 +23,6 @@ async function postBuilderAgent(input: CreateBuilderAgentInput, accessToken: str
       category_tag: input.categoryTag ?? null,
       system_prompt: input.systemPrompt,
       welcome_message: input.welcomeMessage ?? null,
-      llm_engine: input.llmEngine,
       temperature: input.temperature,
       status: input.status,
     }),

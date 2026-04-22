@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Bolt,
   BookOpen,
@@ -18,7 +18,6 @@ import {
   generateAgentWelcomeMessage,
 } from "@/lib/agent-generate-api";
 import { createBuilderAgent } from "@/lib/builder-agent-api";
-import { fetchLLMEngineOptions, type LLMEngineOption } from "@/lib/llm-engine-api";
 import { AUTHENTICATED_HOME } from "@/lib/routes";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
@@ -54,31 +53,7 @@ export default function NewAgentPage() {
   const [systemPrompt, setSystemPrompt] = useState("");
   const [welcomeMessage, setWelcomeMessage] = useState("");
   const [activeTab, setActiveTab] = useState("Setup");
-  const [llmEngine, setLlmEngine] = useState("");
-  const [llmEngineOptions, setLlmEngineOptions] = useState<LLMEngineOption[]>([]);
   const [temperature, setTemperature] = useState(0.7);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadLLMEngines() {
-      try {
-        const data = await fetchLLMEngineOptions();
-        if (!isMounted) return;
-
-        setLlmEngineOptions(data.engines);
-        setLlmEngine(data.default_engine || data.engines[0]?.value || "");
-      } catch (err) {
-        console.error("Failed to load LLM engines:", err);
-      }
-    }
-
-    loadLLMEngines();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   async function handleGenerateDescription() {
     if (!name.trim() || !accessToken) return;
@@ -151,8 +126,7 @@ export default function NewAgentPage() {
   }
 
   async function handleCreate(status: string) {
-    const selectedLlmEngine = llmEngine || llmEngineOptions[0]?.value;
-    if (!name.trim() || !purpose.trim() || !accessToken || !selectedLlmEngine) return;
+    if (!name.trim() || !purpose.trim() || !accessToken) return;
 
     setIsSubmitting(true);
     setError("");
@@ -167,7 +141,6 @@ export default function NewAgentPage() {
             systemPrompt.trim() ||
             `You are ${name.trim()}, an AI agent that helps with: ${purpose.trim()}`,
           welcomeMessage: welcomeMessage.trim() || undefined,
-          llmEngine: selectedLlmEngine,
           temperature,
           status,
         },
@@ -394,22 +367,6 @@ export default function NewAgentPage() {
 
           {activeTab === "Advanced" && (
             <div className="space-y-7">
-              <div>
-                <Label className="text-sm font-bold text-foreground">LLM Engine</Label>
-                <Select value={llmEngine} onValueChange={setLlmEngine}>
-                  <SelectTrigger className="mt-2 h-12 rounded-lg bg-card">
-                    <SelectValue placeholder="Select LLM engine" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {llmEngineOptions.map((engine) => (
-                      <SelectItem key={engine.value} value={engine.value}>
-                        {engine.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
               <div className="rounded-lg border border-border bg-card px-6 py-6">
                 <div className="mb-7 flex items-start justify-between gap-4">
                   <div>

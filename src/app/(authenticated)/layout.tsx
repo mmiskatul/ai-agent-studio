@@ -8,14 +8,14 @@ import { useAuth } from "@/hooks/use-auth";
 import { SIGN_IN_ROUTE } from "@/lib/routes";
 
 export default function AuthenticatedLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const { user, loading } = useAuth();
+  const { user, sessionToken, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && (!user || !sessionToken)) {
       router.replace(SIGN_IN_ROUTE);
     }
-  }, [loading, router, user]);
+  }, [loading, router, sessionToken, user]);
 
   if (loading) {
     return (
@@ -25,7 +25,7 @@ export default function AuthenticatedLayout({ children }: Readonly<{ children: R
     );
   }
 
-  if (!user) return null;
+  if (!user || !sessionToken) return null;
 
   return (
     <div className="flex min-h-screen w-full">

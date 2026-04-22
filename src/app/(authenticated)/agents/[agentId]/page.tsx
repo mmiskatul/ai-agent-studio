@@ -2,11 +2,12 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Trash2, Loader2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { fetchAgent, updateAgent, deleteAgent, type Agent } from "@/lib/agent-api";
 import { AgentForm } from "@/components/AgentForm";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AUTHENTICATED_HOME } from "@/lib/routes";
 
 export default function EditAgentPage() {
@@ -60,8 +61,23 @@ export default function EditAgentPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="mx-auto max-w-2xl p-6">
+        <div className="mb-6 flex items-center justify-between">
+          <Skeleton className="h-8 w-36" />
+          <Skeleton className="h-9 w-24 rounded-md" />
+        </div>
+        <div className="rounded-xl border border-border bg-card p-6">
+          <div className="space-y-5">
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <Skeleton className="h-24 w-full rounded-lg" />
+            <Skeleton className="h-40 w-full rounded-lg" />
+            <div className="flex justify-end gap-3">
+              <Skeleton className="h-10 w-24 rounded-lg" />
+              <Skeleton className="h-10 w-32 rounded-lg" />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

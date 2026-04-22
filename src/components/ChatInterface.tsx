@@ -2,10 +2,12 @@ import { useState, useRef, useEffect } from "react";
 import { Send, Loader2, AlertCircle, Bot, User, Pencil, Trash2, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { Agent, Message } from "@/lib/agent-api";
 
 interface ChatInterfaceProps {
   agent: Agent;
+  pageTitle?: string;
   messages: Message[];
   onSend: (content: string) => void;
   isLoading: boolean;
@@ -17,8 +19,100 @@ interface ChatInterfaceProps {
   isLoadingHistory?: boolean;
 }
 
+const markdownComponents = {
+  h1: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => (
+    <h1 className="mb-3 mt-1 text-xl font-bold leading-tight text-foreground" {...props}>
+      {children}
+    </h1>
+  ),
+  h2: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => (
+    <h2 className="mb-2 mt-1 text-lg font-bold leading-tight text-foreground" {...props}>
+      {children}
+    </h2>
+  ),
+  h3: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => (
+    <h3 className="mb-2 mt-1 text-base font-bold leading-tight text-foreground" {...props}>
+      {children}
+    </h3>
+  ),
+  p: ({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) => (
+    <p className="my-2 leading-6 first:mt-0 last:mb-0" {...props}>
+      {children}
+    </p>
+  ),
+  ol: ({ children, ...props }: React.OlHTMLAttributes<HTMLOListElement>) => (
+    <ol className="my-3 list-decimal space-y-1.5 pl-5" {...props}>
+      {children}
+    </ol>
+  ),
+  ul: ({ children, ...props }: React.HTMLAttributes<HTMLUListElement>) => (
+    <ul className="my-3 list-disc space-y-1.5 pl-5" {...props}>
+      {children}
+    </ul>
+  ),
+  li: ({ children, ...props }: React.LiHTMLAttributes<HTMLLIElement>) => (
+    <li className="pl-1 leading-6" {...props}>
+      {children}
+    </li>
+  ),
+  strong: ({ children, ...props }: React.HTMLAttributes<HTMLElement>) => (
+    <strong className="font-bold text-foreground" {...props}>
+      {children}
+    </strong>
+  ),
+  a: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a
+      className="font-semibold text-primary underline underline-offset-4"
+      target="_blank"
+      rel="noreferrer"
+      {...props}
+    >
+      {children}
+    </a>
+  ),
+  code: ({ children, ...props }: React.HTMLAttributes<HTMLElement>) => (
+    <code className="rounded bg-muted px-1.5 py-0.5 text-[0.9em] font-semibold" {...props}>
+      {children}
+    </code>
+  ),
+  pre: ({ children, ...props }: React.HTMLAttributes<HTMLPreElement>) => (
+    <pre
+      className="my-3 overflow-x-auto rounded-lg border border-border bg-muted p-3 text-xs"
+      {...props}
+    >
+      {children}
+    </pre>
+  ),
+  table: ({ children, ...props }: React.TableHTMLAttributes<HTMLTableElement>) => (
+    <div className="my-3 overflow-x-auto rounded-lg border border-border">
+      <table className="w-full border-collapse text-left text-sm" {...props}>
+        {children}
+      </table>
+    </div>
+  ),
+  th: ({ children, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) => (
+    <th className="border-b border-border bg-muted px-3 py-2 font-bold" {...props}>
+      {children}
+    </th>
+  ),
+  td: ({ children, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) => (
+    <td className="border-b border-border px-3 py-2 align-top last:border-b-0" {...props}>
+      {children}
+    </td>
+  ),
+};
+
+function MarkdownMessage({ content }: { content: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+      {content}
+    </ReactMarkdown>
+  );
+}
+
 export function ChatInterface({
   agent,
+  pageTitle,
   messages,
   onSend,
   isLoading,
@@ -78,13 +172,11 @@ export function ChatInterface({
         </div>
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold text-foreground">{agent.name}</h2>
+            <h2 className="text-base font-bold text-foreground">
+              {pageTitle?.trim() || agent.name}
+            </h2>
             {agent.status === "active" && <span className="h-2 w-2 rounded-full bg-primary" />}
           </div>
-          <p className="mt-1 flex items-center gap-1 text-xs font-medium text-success">
-            <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            Online
-          </p>
         </div>
       </div>
 
@@ -107,7 +199,7 @@ export function ChatInterface({
               <span className="text-xs font-semibold text-muted-foreground">{agent.name}</span>
               <div className="chat-bubble-assistant px-4 py-2.5 text-sm">
                 <div className="prose prose-sm max-w-none">
-                  <ReactMarkdown>{welcomeMessage}</ReactMarkdown>
+                  <MarkdownMessage content={welcomeMessage} />
                 </div>
               </div>
             </div>
@@ -174,7 +266,7 @@ export function ChatInterface({
                     </div>
                   ) : msg.sender_type === "assistant" ? (
                     <div className="prose prose-sm max-w-none">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      <MarkdownMessage content={msg.content} />
                     </div>
                   ) : (
                     <p>{msg.content}</p>
@@ -233,7 +325,7 @@ export function ChatInterface({
                 <span className="text-xs font-semibold text-muted-foreground">{agent.name}</span>
                 <div className="chat-bubble-assistant px-4 py-2.5 text-sm">
                   <div className="prose prose-sm max-w-none">
-                    <ReactMarkdown>{streamingContent}</ReactMarkdown>
+                    <MarkdownMessage content={streamingContent} />
                   </div>
                 </div>
               </div>

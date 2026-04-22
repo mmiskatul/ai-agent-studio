@@ -7,6 +7,7 @@ import { fetchBackendAgents, isAgentActive, type Agent } from "@/lib/agent-api";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const defaultCategories = ["All", "Analytics", "Design", "Engineering", "Legal", "Sales", "HR"];
 
@@ -63,6 +64,33 @@ export default function ExploreAgentsPage() {
     return matchesSearch && matchesCategory;
   });
 
+  function ExploreAgentsSkeleton() {
+    return (
+      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div key={index} className="agent-card flex min-h-64 flex-col p-7">
+            <div className="mb-7 flex items-start justify-between gap-4">
+              <Skeleton className="h-11 w-11 rounded-lg" />
+              <Skeleton className="h-6 w-20 rounded-md" />
+            </div>
+            <div className="flex-1 space-y-3">
+              <Skeleton className="h-6 w-40" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-5/6" />
+            </div>
+            <div className="mt-7 flex items-end justify-between border-t border-border pt-5">
+              <div className="space-y-2">
+                <Skeleton className="h-3 w-14" />
+                <Skeleton className="h-4 w-24" />
+              </div>
+              <Skeleton className="h-9 w-24 rounded-lg" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto w-full max-w-7xl p-6">
       <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -106,9 +134,7 @@ export default function ExploreAgentsPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        </div>
+        <ExploreAgentsSkeleton />
       ) : error ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 text-center">
           <Bot className="mb-3 h-12 w-12 text-muted-foreground/40" />

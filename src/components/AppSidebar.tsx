@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Bot,
-  Bell,
   CircleUserRound,
   Compass,
   LayoutDashboard,
@@ -24,7 +23,6 @@ export function AppSidebar() {
     { label: "Explore Agents", href: "/explore-agents", icon: Compass },
     { label: "Chat", href: "/agents/chat", icon: MessageCircle },
     { label: "Agents", href: "/agents", icon: Users },
-    { label: "Notifications", href: "/notifications", icon: Bell },
     { label: "Profile", href: "/profile", icon: CircleUserRound },
   ];
 

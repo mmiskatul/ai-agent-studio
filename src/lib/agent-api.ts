@@ -44,6 +44,21 @@ export interface ChatAgent {
   message_count: number;
 }
 
+export interface MemorySummary {
+  title: string;
+  description: string;
+}
+
+export interface AgentResponsePage {
+  id: string;
+  agent_id: string;
+  title?: string | null;
+  memory_summary: MemorySummary;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
 const AGENTS_STORAGE_KEY = "agenthub.agents";
 const CHATS_STORAGE_KEY = "agenthub.chats";
 const MESSAGES_STORAGE_KEY = "agenthub.messages";
@@ -92,6 +107,78 @@ function normalizeChat(chat: Chat) {
   return {
     ...chat,
     id: chat.id || chat._id || "",
+  };
+}
+
+function normalizeAgentResponseContent(content: string) {
+  const trimmedContent = content.trim();
+  if (!trimmedContent.startsWith("{")) return content;
+
+  try {
+    const parsed = JSON.parse(trimmedContent) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "response" in parsed &&
+      typeof parsed.response === "string"
+    ) {
+      return parsed.response;
+    }
+  } catch {
+    return content;
+  }
+
+  return content;
+}
+
+function normalizeMemorySummary(summary: unknown): MemorySummary {
+  if (summary && typeof summary === "object") {
+    const parsed = summary as { title?: unknown; description?: unknown };
+    return {
+      title: typeof parsed.title === "string" ? parsed.title.trim() : "",
+      description: typeof parsed.description === "string" ? parsed.description.trim() : "",
+    };
+  }
+
+  if (typeof summary === "string") {
+    const trimmedSummary = summary.trim();
+    if (!trimmedSummary) {
+      return { title: "", description: "" };
+    }
+
+    if (trimmedSummary.startsWith("{")) {
+      try {
+        return normalizeMemorySummary(JSON.parse(trimmedSummary) as unknown);
+      } catch {
+        return { title: "", description: trimmedSummary };
+      }
+    }
+
+    return { title: "", description: trimmedSummary };
+  }
+
+  return { title: "", description: "" };
+}
+
+function normalizeBackendAgentResponseHistory(body: unknown) {
+  const parsedBody = body as {
+    agent_id: string;
+    agent_name: string;
+    chat_id: string | null;
+    memory_summary: unknown;
+    messages: Message[];
+  };
+
+  return {
+    ...parsedBody,
+    memory_summary: normalizeMemorySummary(parsedBody.memory_summary),
+    messages: parsedBody.messages.map((message) => ({
+      ...message,
+      content:
+        message.sender_type === "assistant"
+          ? normalizeAgentResponseContent(message.content)
+          : message.content,
+    })),
   };
 }
 
@@ -182,6 +269,290 @@ export async function fetchBackendAgent(
 ) {
   return withBackendAuthRetry(
     (token) => fetchBackendAgentRequest(agentId, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function generateBackendAgentResponseRequest(
+  agentId: string,
+  content: string,
+  chatId: string | null,
+  accessToken: string,
+) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}/response`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ content, chat_id: chatId || undefined }),
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to generate agent response");
+  }
+
+  const parsedBody = body as {
+    agent_id: string;
+    agent_name: string;
+    chat_id: string;
+    content: string;
+    memory_summary: unknown;
+  };
+
+  return {
+    ...parsedBody,
+    content: normalizeAgentResponseContent(parsedBody.content || ""),
+    memory_summary: normalizeMemorySummary(parsedBody.memory_summary),
+  };
+}
+
+export async function generateBackendAgentResponse(
+  agentId: string,
+  content: string,
+  chatId: string | null,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => generateBackendAgentResponseRequest(agentId, content, chatId, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function fetchBackendAgentResponseHistoryRequest(
+  agentId: string,
+  chatId: string | null,
+  accessToken: string,
+) {
+  const query = chatId ? `?chat_id=${encodeURIComponent(chatId)}` : "";
+  const response = await fetch(`/backend/api/v1/agents/${agentId}/response/history${query}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to load agent response history");
+  }
+
+  return normalizeBackendAgentResponseHistory(body);
+}
+
+export async function fetchBackendAgentResponseHistory(
+  agentId: string,
+  chatId: string | null,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => fetchBackendAgentResponseHistoryRequest(agentId, chatId, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function fetchBackendAgentResponsePagesRequest(agentId: string, accessToken: string) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}/response/pages`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to load response pages");
+  }
+
+  return (body as AgentResponsePage[]).map((page) => ({
+    ...page,
+    memory_summary: normalizeMemorySummary(page.memory_summary),
+  }));
+}
+
+export async function fetchBackendAgentResponsePages(
+  agentId: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => fetchBackendAgentResponsePagesRequest(agentId, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function createBackendAgentResponsePageRequest(
+  agentId: string,
+  title: string | null,
+  accessToken: string,
+) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}/response/pages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ title: title || undefined }),
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to create response page");
+  }
+
+  return {
+    ...(body as AgentResponsePage),
+    memory_summary: normalizeMemorySummary((body as AgentResponsePage).memory_summary),
+  };
+}
+
+export async function createBackendAgentResponsePage(
+  agentId: string,
+  title: string | null,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => createBackendAgentResponsePageRequest(agentId, title, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function deleteBackendAgentResponsePageRequest(
+  agentId: string,
+  chatId: string,
+  accessToken: string,
+) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}/response/pages/${chatId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || "Failed to delete response page");
+  }
+}
+
+export async function deleteBackendAgentResponsePage(
+  agentId: string,
+  chatId: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => deleteBackendAgentResponsePageRequest(agentId, chatId, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function fetchLatestBackendAgentResponseHistoryRequest(accessToken: string) {
+  const response = await fetch("/backend/api/v1/agents/response/latest", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to load latest agent response history");
+  }
+
+  return normalizeBackendAgentResponseHistory(body);
+}
+
+export async function fetchLatestBackendAgentResponseHistory(
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    fetchLatestBackendAgentResponseHistoryRequest,
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function updateBackendAgentResponseMessageRequest(
+  agentId: string,
+  messageId: string,
+  content: string,
+  accessToken: string,
+) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}/response/messages/${messageId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ content }),
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to update message");
+  }
+
+  return normalizeBackendAgentResponseHistory(body);
+}
+
+export async function updateBackendAgentResponseMessage(
+  agentId: string,
+  messageId: string,
+  content: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => updateBackendAgentResponseMessageRequest(agentId, messageId, content, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function deleteBackendAgentResponseMessageRequest(
+  agentId: string,
+  messageId: string,
+  accessToken: string,
+) {
+  const response = await fetch(`/backend/api/v1/agents/${agentId}/response/messages/${messageId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.detail || "Failed to delete message");
+  }
+
+  return normalizeBackendAgentResponseHistory(body);
+}
+
+export async function deleteBackendAgentResponseMessage(
+  agentId: string,
+  messageId: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => deleteBackendAgentResponseMessageRequest(agentId, messageId, token),
     accessToken,
     refreshAccessToken,
   );

@@ -5,6 +5,8 @@ import { useState, useEffect, useCallback } from "react";
 export interface AuthUser {
   id: string;
   email: string;
+  display_name?: string | null;
+  profile_image?: string | null;
 }
 
 interface AuthSession {
@@ -68,6 +70,10 @@ function writeStoredSession(session: AuthSession | null) {
   }
 }
 
+function clearStoredSession() {
+  writeStoredSession(null);
+}
+
 export function useAuth() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -93,6 +99,13 @@ export function useAuth() {
     setAccessToken(session.accessToken);
     setSessionToken(session.sessionToken);
     return session.user;
+  }, []);
+
+  const clearSessionState = useCallback(() => {
+    clearStoredSession();
+    setUser(null);
+    setAccessToken(null);
+    setSessionToken(null);
   }, []);
 
   const signIn = useCallback(
@@ -144,24 +157,29 @@ export function useAuth() {
 
   const refreshAccessToken = useCallback(async () => {
     if (!sessionToken) return null;
-    const response = await requestJson<{ access_token: string }>("/auth/refresh", {
-      method: "POST",
-      body: JSON.stringify({ session_token: sessionToken }),
-    });
-    const existingSession = readStoredSession();
-    if (!existingSession) return null;
-    const nextSession = { ...existingSession, accessToken: response.access_token };
-    writeStoredSession(nextSession);
-    setAccessToken(response.access_token);
-    return response.access_token;
-  }, [sessionToken]);
+    try {
+      const response = await requestJson<{ access_token: string }>("/auth/refresh", {
+        method: "POST",
+        body: JSON.stringify({ session_token: sessionToken }),
+      });
+      const existingSession = readStoredSession();
+      if (!existingSession) {
+        clearSessionState();
+        return null;
+      }
+      const nextSession = { ...existingSession, accessToken: response.access_token };
+      writeStoredSession(nextSession);
+      setAccessToken(response.access_token);
+      return response.access_token;
+    } catch {
+      clearSessionState();
+      return null;
+    }
+  }, [clearSessionState, sessionToken]);
 
   const signOut = useCallback(async () => {
-    writeStoredSession(null);
-    setUser(null);
-    setAccessToken(null);
-    setSessionToken(null);
-  }, []);
+    clearSessionState();
+  }, [clearSessionState]);
 
   return {
     user,

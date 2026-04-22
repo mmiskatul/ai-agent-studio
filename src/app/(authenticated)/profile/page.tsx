@@ -1,22 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Activity,
-  Bot,
-  CheckCircle2,
+  Camera,
   CircleUserRound,
-  Clock3,
   Fingerprint,
+  ImagePlus,
   LogOut,
   Mail,
-  MessageCircle,
+  Save,
   ShieldCheck,
 } from "lucide-react";
-import { fetchAgents, fetchChatAgents, type Agent, type ChatAgent } from "@/lib/agent-api";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { fetchProfile, type ProfileResponse, updateProfile } from "@/lib/profile-api";
 
 function formatDate(value?: string) {
   if (!value) return "Not available";
@@ -33,36 +33,75 @@ function formatDate(value?: string) {
 
 export default function ProfilePage() {
   const { user, accessToken, sessionToken, signOut } = useAuth();
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [chatAgents, setChatAgents] = useState<ChatAgent[]>([]);
-  const initial = user?.email?.trim().charAt(0).toUpperCase() || "U";
-  const displayName = user?.email?.split("@")[0] || "User";
-  const activeAgents = agents.filter((agent) => agent.status === "active").length;
-  const inactiveAgents = agents.length - activeAgents;
-  const totalMessages = chatAgents.reduce((total, item) => total + item.message_count, 0);
-  const latestAgent = agents[0];
-  const latestConversation = chatAgents[0];
+  const [profile, setProfile] = useState<ProfileResponse | null>(null);
+  const [displayNameInput, setDisplayNameInput] = useState("");
+  const [profileImageInput, setProfileImageInput] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const displayName =
+    displayNameInput.trim() ||
+    profile?.display_name?.trim() ||
+    user?.display_name?.trim() ||
+    user?.email?.split("@")[0] ||
+    "User";
+  const profileImage = profileImageInput || profile?.profile_image || user?.profile_image || null;
+  const initial = displayName.trim().charAt(0).toUpperCase() || "U";
+  const latestAgent = profile?.latest_agent;
+  const latestConversation = profile?.latest_conversation;
 
   useEffect(() => {
     async function loadProfileStats() {
+      if (!accessToken) return;
+
       try {
-        const [agentData, chatData] = await Promise.all([fetchAgents(), fetchChatAgents()]);
-        setAgents(agentData);
-        setChatAgents(chatData);
+        const data = await fetchProfile(accessToken);
+        setProfile(data);
+        setDisplayNameInput(data.display_name ?? "");
+        setProfileImageInput(data.profile_image ?? null);
       } catch (err) {
         console.error("Failed to load profile stats:", err);
       }
     }
 
     loadProfileStats();
-  }, []);
+  }, [accessToken]);
 
-  const stats = [
-    { label: "Total Agents", value: agents.length, icon: Bot },
-    { label: "Active Agents", value: activeAgents, icon: CheckCircle2 },
-    { label: "Inactive Agents", value: inactiveAgents, icon: Clock3 },
-    { label: "Messages", value: totalMessages, icon: MessageCircle },
-  ];
+  async function handleProfileImageChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setProfileImageInput(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function handleSaveProfile() {
+    if (!accessToken) return;
+
+    setIsSaving(true);
+    setSaveMessage(null);
+
+    try {
+      const nextProfile = await updateProfile(accessToken, {
+        display_name: displayNameInput.trim() || null,
+        profile_image: profileImageInput,
+      });
+      setProfile(nextProfile);
+      setDisplayNameInput(nextProfile.display_name ?? "");
+      setProfileImageInput(nextProfile.profile_image ?? null);
+      setSaveMessage("Profile updated.");
+    } catch (err) {
+      console.error("Failed to update profile:", err);
+      setSaveMessage(err instanceof Error ? err.message : "Failed to update profile.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   return (
     <div className="mx-auto w-full max-w-6xl p-6">
@@ -76,8 +115,33 @@ export default function ProfilePage() {
       <section className="agent-card mb-6 p-6">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-            <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full bg-primary text-3xl font-bold text-primary-foreground">
-              {initial}
+            <div className="relative h-24 w-24 shrink-0">
+              {profileImage ? (
+                <img
+                  src={profileImage}
+                  alt={displayName}
+                  className="h-24 w-24 rounded-full object-cover"
+                />
+              ) : (
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-primary text-3xl font-bold text-primary-foreground">
+                  {initial}
+                </div>
+              )}
+              <Button
+                type="button"
+                size="icon"
+                className="absolute bottom-0 right-0 h-8 w-8 rounded-full"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Camera className="h-4 w-4" />
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleProfileImageChange}
+              />
             </div>
 
             <div className="min-w-0">
@@ -98,9 +162,6 @@ export default function ProfilePage() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Link href="/agents/new">
-              <Button className="w-full sm:w-auto">Create Agent</Button>
-            </Link>
             <Button variant="outline" className="w-full gap-2 sm:w-auto" onClick={signOut}>
               <LogOut className="h-4 w-4" />
               Sign Out
@@ -109,34 +170,54 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {stats.map((stat) => (
-          <div key={stat.label} className="agent-card flex items-center gap-4 p-5">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10">
-              <stat.icon className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
-              <p className="mt-1 text-2xl font-bold text-foreground">{stat.value}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className="agent-card p-6">
           <div className="mb-5 flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-bold text-foreground">Account Details</h2>
+            <h2 className="text-lg font-bold text-foreground">Edit Profile</h2>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-lg border border-border bg-background px-4 py-4 sm:col-span-2">
+              <p className="text-xs font-bold uppercase text-muted-foreground">Display Name</p>
+              <Input
+                value={displayNameInput}
+                onChange={(event) => setDisplayNameInput(event.target.value)}
+                placeholder="Enter your name"
+                className="mt-3 h-11 rounded-lg"
+              />
+            </div>
+
+            <div className="rounded-lg border border-border bg-background px-4 py-4 sm:col-span-2">
+              <p className="text-xs font-bold uppercase text-muted-foreground">Profile Image</p>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <ImagePlus className="h-4 w-4" />
+                  Upload Image
+                </Button>
+                {profileImageInput ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setProfileImageInput(null)}
+                  >
+                    Remove Image
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+
             <div className="rounded-lg border border-border bg-background px-4 py-4">
               <p className="text-xs font-bold uppercase text-muted-foreground">User ID</p>
               <div className="mt-2 flex items-center gap-2">
                 <Fingerprint className="h-4 w-4 text-muted-foreground" />
                 <p className="truncate text-sm font-semibold text-foreground">
-                  {user?.id ?? "Not available"}
+                  {profile?.id || user?.id || "Not available"}
                 </p>
               </div>
             </div>
@@ -150,30 +231,14 @@ export default function ProfilePage() {
                 </p>
               </div>
             </div>
+          </div>
 
-            <div className="rounded-lg border border-border bg-background px-4 py-4">
-              <p className="text-xs font-bold uppercase text-muted-foreground">Latest Agent</p>
-              <p className="mt-2 truncate text-sm font-semibold text-foreground">
-                {latestAgent?.name ?? "No agents created"}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Created {formatDate(latestAgent?.created_at)}
-              </p>
-            </div>
-
-            <div className="rounded-lg border border-border bg-background px-4 py-4">
-              <p className="text-xs font-bold uppercase text-muted-foreground">
-                Latest Conversation
-              </p>
-              <p className="mt-2 truncate text-sm font-semibold text-foreground">
-                {latestConversation?.agent.name ?? "No conversations yet"}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {latestConversation
-                  ? `${latestConversation.message_count} messages`
-                  : "Start a chat to see activity"}
-              </p>
-            </div>
+          <div className="mt-5 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+            <Button type="button" className="gap-2" disabled={isSaving} onClick={handleSaveProfile}>
+              <Save className="h-4 w-4" />
+              {isSaving ? "Saving..." : "Save Profile"}
+            </Button>
+            {saveMessage ? <p className="text-sm text-muted-foreground">{saveMessage}</p> : null}
           </div>
         </section>
 
@@ -187,8 +252,8 @@ export default function ProfilePage() {
             <div className="rounded-lg border border-border bg-background px-4 py-4">
               <p className="text-sm font-bold text-foreground">Agent workspace</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                {agents.length > 0
-                  ? `${agents.length} agents created across your workspace.`
+                {(profile?.stats.total_agents ?? 0) > 0
+                  ? `${profile?.stats.total_agents ?? 0} agents created across your workspace.`
                   : "No agents created yet."}
               </p>
               <Link href="/agents">
@@ -208,6 +273,28 @@ export default function ProfilePage() {
                   Open Chat
                 </Button>
               </Link>
+            </div>
+
+            <div className="rounded-lg border border-border bg-background px-4 py-4">
+              <p className="text-sm font-bold text-foreground">Latest Agent</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {latestAgent?.name ?? "No agents created"}
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Created {formatDate(latestAgent?.created_at)}
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-border bg-background px-4 py-4">
+              <p className="text-sm font-bold text-foreground">Latest Conversation</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {latestConversation?.agent_name ?? "No conversations yet"}
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {latestConversation
+                  ? `${latestConversation.message_count} messages`
+                  : "Start a chat to see activity"}
+              </p>
             </div>
           </div>
         </aside>

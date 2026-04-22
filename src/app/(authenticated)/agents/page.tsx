@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { Bot, Filter, MessageSquare, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Bot, MessageSquare, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import {
   deleteBackendAgent,
   fetchBackendAgent,
@@ -19,6 +19,14 @@ import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -34,6 +42,9 @@ export default function AgentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("updated");
   const [editTarget, setEditTarget] = useState<Agent | null>(null);
   const [loadingEditId, setLoadingEditId] = useState<string | null>(null);
   const [testAgentId, setTestAgentId] = useState<string | null>(null);
@@ -116,15 +127,73 @@ export default function AgentsPage() {
     }
   }
 
-  const filteredAgents = agents.filter((agent) => {
-    const query = search.toLowerCase();
-    return (
-      agent.name.toLowerCase().includes(query) ||
-      agent.role.toLowerCase().includes(query) ||
-      agent.purpose.toLowerCase().includes(query)
-    );
-  });
+  const categoryOptions = useMemo(() => {
+    const categories = agents.map((agent) => agent.template_type || "Custom").filter(Boolean);
+    return Array.from(new Set(categories)).sort((a, b) => a.localeCompare(b));
+  }, [agents]);
+
+  const filteredAgents = agents
+    .filter((agent) => {
+      const query = search.trim().toLowerCase();
+      const category = agent.template_type || "Custom";
+      const matchesSearch =
+        !query ||
+        agent.name.toLowerCase().includes(query) ||
+        agent.role.toLowerCase().includes(query) ||
+        agent.purpose.toLowerCase().includes(query) ||
+        category.toLowerCase().includes(query);
+      const matchesStatus = statusFilter === "all" || agent.status === statusFilter;
+      const matchesCategory = categoryFilter === "all" || category === categoryFilter;
+
+      return matchesSearch && matchesStatus && matchesCategory;
+    })
+    .sort((a, b) => {
+      if (sortBy === "name") {
+        return a.name.localeCompare(b.name);
+      }
+      if (sortBy === "queries") {
+        return (b.queries_30d ?? 0) - (a.queries_30d ?? 0);
+      }
+      return b.updated_at.localeCompare(a.updated_at);
+    });
   const visibleAgents = filteredAgents;
+  const hasActiveFilters =
+    Boolean(search.trim()) ||
+    statusFilter !== "all" ||
+    categoryFilter !== "all" ||
+    sortBy !== "updated";
+
+  function clearFilters() {
+    setSearch("");
+    setStatusFilter("all");
+    setCategoryFilter("all");
+    setSortBy("updated");
+  }
+
+  function AgentsTableSkeleton() {
+    return (
+      <div className="agent-card overflow-hidden p-5">
+        <div className="space-y-4">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div key={index} className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-10 w-10 rounded-lg" />
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-8 w-16 rounded-md" />
+                <Skeleton className="h-8 w-16 rounded-md" />
+                <Skeleton className="h-8 w-16 rounded-md" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-7xl p-6">
@@ -150,8 +219,8 @@ export default function AgentsPage() {
         </Link>
       </div>
 
-      <div className="mb-6 flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
-        <div className="relative w-full sm:w-80">
+      <div className="mb-6 grid w-full gap-3 md:grid-cols-[minmax(220px,1fr)_180px_180px_180px_auto]">
+        <div className="relative min-w-0">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
@@ -160,16 +229,57 @@ export default function AgentsPage() {
             className="h-10 rounded-lg bg-card pl-10"
           />
         </div>
-        <Button variant="outline" className="h-10 gap-2 rounded-lg bg-card">
-          <Filter className="h-4 w-4" />
-          Filter
-        </Button>
+
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="h-10 rounded-lg bg-card">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <SelectTrigger className="h-10 rounded-lg bg-card">
+            <SelectValue placeholder="Category" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All categories</SelectItem>
+            {categoryOptions.map((category) => (
+              <SelectItem key={category} value={category}>
+                {category}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={sortBy} onValueChange={setSortBy}>
+          <SelectTrigger className="h-10 rounded-lg bg-card">
+            <SelectValue placeholder="Sort" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="updated">Recently updated</SelectItem>
+            <SelectItem value="name">Name A-Z</SelectItem>
+            <SelectItem value="queries">Most queries</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {hasActiveFilters && (
+          <Button
+            variant="outline"
+            className="h-10 gap-2 rounded-lg bg-card"
+            onClick={clearFilters}
+          >
+            <X className="h-4 w-4" />
+            Clear
+          </Button>
+        )}
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        </div>
+        <AgentsTableSkeleton />
       ) : error ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 text-center">
           <Bot className="mb-3 h-12 w-12 text-muted-foreground/40" />
@@ -184,7 +294,7 @@ export default function AgentsPage() {
         </div>
       ) : filteredAgents.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">
-          No agents match your search.
+          No agents match your filters.
         </p>
       ) : (
         <div className="agent-card overflow-hidden">
