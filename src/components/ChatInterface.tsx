@@ -129,7 +129,9 @@ export function ChatInterface({
   const bottomRef = useRef<HTMLDivElement>(null);
   const welcomeMessage =
     agent.welcome_message?.trim() ||
-    `Hi, I'm ${agent.name}. I can help with ${agent.purpose}. Share what you need, and I'll guide you through the next best steps.`;
+    `Hi, I'm ${agent.name}. I can help with ${
+      agent.purpose || agent.description || agent.role
+    }. Share what you need, and I'll guide you through the next best steps.`;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

@@ -12,6 +12,9 @@ export interface Agent {
   queries_30d?: number;
   tools?: string[];
   model?: string | null;
+  temperature?: number;
+  routing_keywords?: string[];
+  priority?: number;
   is_active?: boolean;
   created_at: string;
   updated_at: string;
@@ -24,6 +27,8 @@ export interface Chat {
   id: string;
   _id?: string;
   agent_id: string;
+  current_agent_id?: string | null;
+  session_id?: string | null;
   title?: string | null;
   created_at: string;
   updated_at?: string;
@@ -33,8 +38,12 @@ export interface Message {
   id: string;
   chat_id: string;
   sender_type: "user" | "assistant";
+  role?: "user" | "assistant";
+  agent_id?: string | null;
+  session_id?: string | null;
   content: string;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface ChatAgent {
@@ -57,6 +66,35 @@ export interface AgentResponsePage {
   message_count: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface StructuredChatResponse {
+  session_id: string;
+  chat_id: string;
+  agent: {
+    id: string;
+    name: string;
+    role: string;
+  };
+  system_summary: string;
+  response: string;
+  routing_reason: string;
+  memory_updated: boolean;
+  metadata: {
+    model?: string;
+    timestamp?: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface AgentResponseGenerateResult {
+  agent_id: string;
+  agent_name: string;
+  chat_id: string;
+  content: string;
+  memory_summary: MemorySummary;
+  structured_response?: StructuredChatResponse;
+  local_fallback?: boolean;
 }
 
 const AGENTS_STORAGE_KEY = "agenthub.agents";
@@ -100,6 +138,9 @@ function normalizeAgent(agent: Agent) {
   return {
     ...agent,
     id: agent.id || agent._id || "",
+    purpose: agent.purpose || agent.description || "",
+    template_type: agent.template_type || null,
+    status: agent.status || (agent.is_active === false ? "inactive" : "active"),
   };
 }
 
@@ -107,7 +148,38 @@ function normalizeChat(chat: Chat) {
   return {
     ...chat,
     id: chat.id || chat._id || "",
+    agent_id: chat.agent_id || chat.current_agent_id || "",
   };
+}
+
+function normalizeMessage(message: Message) {
+  const senderType = message.sender_type || message.role || "assistant";
+  return {
+    ...message,
+    id: message.id || (message as Message & { _id?: string })._id || "",
+    sender_type: senderType,
+    role: senderType,
+    content:
+      senderType === "assistant" ? normalizeAgentResponseContent(message.content) : message.content,
+  } as Message;
+}
+
+function sessionIdForAgent(agentId: string) {
+  return `agent_${agentId}`;
+}
+
+function buildLocalAgentFallback(agentId: string, content: string, chatId: string | null) {
+  return {
+    agent_id: agentId,
+    agent_name: "",
+    chat_id: chatId || "pending",
+    content:
+      "I could not reach the configured AI provider for this request, so I am showing a local fallback instead.\n\n" +
+      `Your message: ${content}\n\n` +
+      "Please check the backend provider configuration, then try again.",
+    memory_summary: normalizeMemorySummary("Local fallback response"),
+    local_fallback: true,
+  } satisfies AgentResponseGenerateResult;
 }
 
 function normalizeAgentResponseContent(content: string) {
@@ -172,13 +244,30 @@ function normalizeBackendAgentResponseHistory(body: unknown) {
   return {
     ...parsedBody,
     memory_summary: normalizeMemorySummary(parsedBody.memory_summary),
-    messages: parsedBody.messages.map((message) => ({
-      ...message,
-      content:
-        message.sender_type === "assistant"
-          ? normalizeAgentResponseContent(message.content)
-          : message.content,
-    })),
+    messages: parsedBody.messages.map(normalizeMessage),
+  };
+}
+
+function normalizeStructuredHistory(agentId: string, chatId: string | null, body: unknown) {
+  const parsedBody = body as {
+    session_id: string;
+    chats: Chat[];
+    messages: Message[];
+  };
+  const chats = (parsedBody.chats || []).map(normalizeChat);
+  const selectedChat =
+    (chatId ? chats.find((chat) => chat.id === chatId) : null) || chats[0] || null;
+  const selectedChatId = selectedChat?.id || chatId || null;
+  const messages = (parsedBody.messages || [])
+    .map(normalizeMessage)
+    .filter((message) => !selectedChatId || message.chat_id === selectedChatId);
+
+  return {
+    agent_id: selectedChat?.agent_id || agentId,
+    agent_name: "",
+    chat_id: selectedChatId,
+    memory_summary: normalizeMemorySummary(selectedChat?.title || ""),
+    messages,
   };
 }
 
@@ -279,34 +368,40 @@ async function generateBackendAgentResponseRequest(
   content: string,
   chatId: string | null,
   accessToken: string,
-) {
-  const response = await fetch(`/backend/api/v1/agents/${agentId}/response`, {
+): Promise<AgentResponseGenerateResult> {
+  const response = await fetch("/backend/api/chat/send", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({ content, chat_id: chatId || undefined }),
+    body: JSON.stringify({
+      message: content,
+      session_id: sessionIdForAgent(agentId),
+      chat_id: chatId || undefined,
+      agent_id: agentId,
+    }),
   });
 
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    const detail = typeof body.detail === "string" ? body.detail : "";
+    if (detail.toLowerCase().includes("llm provider request failed")) {
+      return buildLocalAgentFallback(agentId, content, chatId);
+    }
     throw new Error(body.detail || "Failed to generate agent response");
   }
 
-  const parsedBody = body as {
-    agent_id: string;
-    agent_name: string;
-    chat_id: string;
-    content: string;
-    memory_summary: unknown;
-  };
+  const parsedBody = body as StructuredChatResponse;
 
   return {
-    ...parsedBody,
-    content: normalizeAgentResponseContent(parsedBody.content || ""),
-    memory_summary: normalizeMemorySummary(parsedBody.memory_summary),
+    agent_id: parsedBody.agent.id,
+    agent_name: parsedBody.agent.name,
+    chat_id: parsedBody.chat_id,
+    content: normalizeAgentResponseContent(parsedBody.response || ""),
+    memory_summary: normalizeMemorySummary(parsedBody.system_summary),
+    structured_response: parsedBody,
   };
 }
 
@@ -329,8 +424,7 @@ async function fetchBackendAgentResponseHistoryRequest(
   chatId: string | null,
   accessToken: string,
 ) {
-  const query = chatId ? `?chat_id=${encodeURIComponent(chatId)}` : "";
-  const response = await fetch(`/backend/api/v1/agents/${agentId}/response/history${query}`, {
+  const response = await fetch(`/backend/api/chat/history/${sessionIdForAgent(agentId)}`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -339,10 +433,10 @@ async function fetchBackendAgentResponseHistoryRequest(
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to load agent response history");
+    throw new Error(body.detail || "Failed to load chat history");
   }
 
-  return normalizeBackendAgentResponseHistory(body);
+  return normalizeStructuredHistory(agentId, chatId, body);
 }
 
 export async function fetchBackendAgentResponseHistory(
@@ -564,7 +658,7 @@ async function updateBackendAgentRequest(
   accessToken: string,
 ) {
   const response = await fetch(`/backend/api/v1/agents/${agentId}`, {
-    method: "PATCH",
+    method: "PUT",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${accessToken}`,

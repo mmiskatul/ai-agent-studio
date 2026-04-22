@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Bot } from "lucide-react";
+import { toast } from "sonner";
 import {
   deleteBackendAgentResponseMessage,
   fetchBackendAgent,
@@ -15,6 +16,7 @@ import {
   type Message,
 } from "@/lib/agent-api";
 import { useAuth } from "@/hooks/use-auth";
+import { getChatErrorMessage, getErrorMessage } from "@/lib/error-message";
 import { ChatInterface } from "@/components/ChatInterface";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,6 +45,22 @@ function createOptimisticUserMessage(content: string): Message {
     id: `local_${random}`,
     chat_id: "pending",
     sender_type: "user",
+    content,
+    created_at: new Date().toISOString(),
+  };
+}
+
+function createLocalAssistantMessage(chatId: string, content: string): Message {
+  const random =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2);
+
+  return {
+    id: `local_assistant_${random}`,
+    chat_id: chatId,
+    sender_type: "assistant",
+    role: "assistant",
     content,
     created_at: new Date().toISOString(),
   };
@@ -103,7 +121,9 @@ export function AgentTestDrawer({
         setMessages(history.messages);
       } catch (err) {
         console.error("Failed to load testing chat:", err);
-        setError(err instanceof Error ? err.message : "Failed to load testing chat");
+        const message = getErrorMessage(err, "Failed to load testing chat.");
+        setError(message);
+        toast.error("Could not load test chat", { description: message });
       } finally {
         setLoading(false);
       }
@@ -122,7 +142,7 @@ export function AgentTestDrawer({
       setMessages((prev) => [...prev, optimisticMessage]);
 
       try {
-        await generateBackendAgentResponse(
+        const response = await generateBackendAgentResponse(
           agent.id,
           content,
           null,
@@ -135,11 +155,20 @@ export function AgentTestDrawer({
           accessToken,
           refreshAccessToken,
         );
+        if (response.local_fallback && history.messages.length === 0) {
+          setMessages([
+            { ...optimisticMessage, chat_id: response.chat_id },
+            createLocalAssistantMessage(response.chat_id, response.content),
+          ]);
+          return;
+        }
         setMessages(history.messages);
       } catch (err) {
         console.error("Failed to send testing message:", err);
         setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id));
-        setError(err instanceof Error ? err.message : "Failed to send message");
+        const message = getChatErrorMessage(err);
+        setError(message);
+        toast.error("Could not generate response", { description: message });
       } finally {
         setIsStreaming(false);
       }
@@ -164,7 +193,9 @@ export function AgentTestDrawer({
         setMessages(history.messages);
       } catch (err) {
         console.error("Failed to delete testing message:", err);
-        setError(err instanceof Error ? err.message : "Failed to delete message");
+        const message = getErrorMessage(err, "Failed to delete message.");
+        setError(message);
+        toast.error("Could not delete message", { description: message });
       } finally {
         setMessageActionId(null);
       }
@@ -190,7 +221,9 @@ export function AgentTestDrawer({
         setMessages(history.messages);
       } catch (err) {
         console.error("Failed to edit testing message:", err);
-        setError(err instanceof Error ? err.message : "Failed to edit message");
+        const message = getErrorMessage(err, "Failed to edit message.");
+        setError(message);
+        toast.error("Could not edit message", { description: message });
       } finally {
         setMessageActionId(null);
       }
@@ -234,8 +267,6 @@ export function AgentTestDrawer({
               isLoading={isStreaming}
               streamingContent=""
               error={error}
-              onDeleteMessage={handleDeleteMessage}
-              onEditMessage={handleEditMessage}
               messageActionId={messageActionId}
             />
           ) : (

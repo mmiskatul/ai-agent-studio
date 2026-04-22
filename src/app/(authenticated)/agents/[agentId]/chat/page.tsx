@@ -3,6 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { Bot, FileText, Loader2, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   createBackendAgentResponsePage,
   deleteBackendAgentResponsePage,
@@ -24,6 +25,7 @@ import { ChatInterface } from "@/components/ChatInterface";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AUTHENTICATED_HOME } from "@/lib/routes";
+import { getChatErrorMessage, getErrorMessage } from "@/lib/error-message";
 import {
   Select,
   SelectContent,
@@ -48,6 +50,22 @@ function createOptimisticUserMessage(content: string): Message {
     id: `local_${random}`,
     chat_id: "pending",
     sender_type: "user",
+    content,
+    created_at: new Date().toISOString(),
+  };
+}
+
+function createLocalAssistantMessage(chatId: string, content: string): Message {
+  const random =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2);
+
+  return {
+    id: `local_assistant_${random}`,
+    chat_id: chatId,
+    sender_type: "assistant",
+    role: "assistant",
     content,
     created_at: new Date().toISOString(),
   };
@@ -196,7 +214,9 @@ export default function ChatPage() {
         await loadAgentWorkspace(agentId);
       } catch (err) {
         console.error("Failed to load agent response workspace:", err);
-        setError(err instanceof Error ? err.message : "Failed to load agent");
+        const message = getErrorMessage(err, "Failed to load agent workspace.");
+        setError(message);
+        toast.error("Could not load chat", { description: message });
       } finally {
         setLoading(false);
       }
@@ -227,7 +247,9 @@ export default function ChatPage() {
         await loadAgentWorkspace(selectedAgentId, true);
       } catch (err) {
         console.error("Failed to switch agent:", err);
-        setError(err instanceof Error ? err.message : "Failed to switch agent");
+        const message = getErrorMessage(err, "Failed to switch agent.");
+        setError(message);
+        toast.error("Could not switch agent", { description: message });
       } finally {
         setIsSwitchingAgent(false);
       }
@@ -254,7 +276,9 @@ export default function ChatPage() {
         setMemorySummary(history.memory_summary);
       } catch (err) {
         console.error("Failed to switch response page:", err);
-        setError(err instanceof Error ? err.message : "Failed to switch page");
+        const message = getErrorMessage(err, "Failed to switch page.");
+        setError(message);
+        toast.error("Could not switch page", { description: message });
       } finally {
         setIsSwitchingAgent(false);
       }
@@ -281,7 +305,9 @@ export default function ChatPage() {
       setMemorySummary({ title: "", description: "" });
     } catch (err) {
       console.error("Failed to create response page:", err);
-      setError(err instanceof Error ? err.message : "Failed to create page");
+      const message = getErrorMessage(err, "Failed to create page.");
+      setError(message);
+      toast.error("Could not create page", { description: message });
     } finally {
       setIsCreatingPage(false);
     }
@@ -315,14 +341,27 @@ export default function ChatPage() {
           accessToken,
           refreshAccessToken,
         );
+        const fallbackMessages = response.local_fallback
+          ? [
+              {
+                ...optimisticMessage,
+                chat_id: response.chat_id || activePageId,
+              },
+              createLocalAssistantMessage(response.chat_id || activePageId, response.content),
+            ]
+          : null;
         setPages(nextPages);
         setActivePageId(history.chat_id || response.chat_id || activePageId);
-        setMessages(history.messages);
+        setMessages(
+          fallbackMessages && history.messages.length === 0 ? fallbackMessages : history.messages,
+        );
         setMemorySummary(history.memory_summary || response.memory_summary);
       } catch (err) {
         console.error("Failed to generate agent response:", err);
         setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id));
-        setError(err instanceof Error ? err.message : "Failed to generate agent response");
+        const message = getChatErrorMessage(err);
+        setError(message);
+        toast.error("Could not generate response", { description: message });
       } finally {
         setIsGenerating(false);
       }
@@ -355,7 +394,9 @@ export default function ChatPage() {
         setMemorySummary(history.memory_summary);
       } catch (err) {
         console.error("Failed to delete agent response message:", err);
-        setError(err instanceof Error ? err.message : "Failed to delete message");
+        const message = getErrorMessage(err, "Failed to delete message.");
+        setError(message);
+        toast.error("Could not delete message", { description: message });
       } finally {
         setMessageActionId(null);
       }
@@ -389,7 +430,9 @@ export default function ChatPage() {
         setMemorySummary(history.memory_summary);
       } catch (err) {
         console.error("Failed to edit agent response message:", err);
-        setError(err instanceof Error ? err.message : "Failed to edit message");
+        const message = getErrorMessage(err, "Failed to edit message.");
+        setError(message);
+        toast.error("Could not edit message", { description: message });
       } finally {
         setMessageActionId(null);
       }
@@ -438,7 +481,9 @@ export default function ChatPage() {
         }
       } catch (err) {
         console.error("Failed to delete response page:", err);
-        setError(err instanceof Error ? err.message : "Failed to delete page");
+        const message = getErrorMessage(err, "Failed to delete page.");
+        setError(message);
+        toast.error("Could not delete page", { description: message });
       } finally {
         setPageActionId(null);
       }
@@ -604,8 +649,6 @@ export default function ChatPage() {
             isLoading={isGenerating}
             streamingContent=""
             error={error}
-            onDeleteMessage={handleDeleteMessage}
-            onEditMessage={handleEditMessage}
             messageActionId={messageActionId}
           />
         )}
