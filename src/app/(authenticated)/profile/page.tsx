@@ -6,7 +6,6 @@ import {
   Activity,
   Camera,
   CircleUserRound,
-  Fingerprint,
   ImagePlus,
   LogOut,
   Mail,
@@ -32,7 +31,7 @@ function formatDate(value?: string) {
 }
 
 export default function ProfilePage() {
-  const { user, accessToken, sessionToken, signOut } = useAuth();
+  const { user, accessToken, sessionToken, refreshAccessToken, signOut } = useAuth();
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [displayNameInput, setDisplayNameInput] = useState("");
   const [profileImageInput, setProfileImageInput] = useState<string | null>(null);
@@ -55,7 +54,7 @@ export default function ProfilePage() {
       if (!accessToken) return;
 
       try {
-        const data = await fetchProfile(accessToken);
+        const data = await fetchProfile(accessToken, refreshAccessToken);
         setProfile(data);
         setDisplayNameInput(data.display_name ?? "");
         setProfileImageInput(data.profile_image ?? null);
@@ -65,7 +64,7 @@ export default function ProfilePage() {
     }
 
     loadProfileStats();
-  }, [accessToken]);
+  }, [accessToken, refreshAccessToken]);
 
   async function handleProfileImageChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -87,10 +86,14 @@ export default function ProfilePage() {
     setSaveMessage(null);
 
     try {
-      const nextProfile = await updateProfile(accessToken, {
-        display_name: displayNameInput.trim() || null,
-        profile_image: profileImageInput,
-      });
+      const nextProfile = await updateProfile(
+        accessToken,
+        {
+          display_name: displayNameInput.trim() || null,
+          profile_image: profileImageInput,
+        },
+        refreshAccessToken,
+      );
       setProfile(nextProfile);
       setDisplayNameInput(nextProfile.display_name ?? "");
       setProfileImageInput(nextProfile.profile_image ?? null);
@@ -213,16 +216,6 @@ export default function ProfilePage() {
             </div>
 
             <div className="rounded-lg border border-border bg-background px-4 py-4">
-              <p className="text-xs font-bold uppercase text-muted-foreground">User ID</p>
-              <div className="mt-2 flex items-center gap-2">
-                <Fingerprint className="h-4 w-4 text-muted-foreground" />
-                <p className="truncate text-sm font-semibold text-foreground">
-                  {profile?.id || user?.id || "Not available"}
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-border bg-background px-4 py-4">
               <p className="text-xs font-bold uppercase text-muted-foreground">Session</p>
               <div className="mt-2 flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-success" />
@@ -266,11 +259,11 @@ export default function ProfilePage() {
             <div className="rounded-lg border border-border bg-background px-4 py-4">
               <p className="text-sm font-bold text-foreground">Chat access</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Open an existing chat or choose an agent from the conversation selector.
+                Open an agent to start or continue a conversation.
               </p>
-              <Link href="/agents/chat">
+              <Link href="/agents">
                 <Button variant="outline" size="sm" className="mt-3">
-                  Open Chat
+                  Open Agents
                 </Button>
               </Link>
             </div>

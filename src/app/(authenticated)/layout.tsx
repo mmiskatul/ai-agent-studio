@@ -28,11 +28,11 @@ export default function AuthenticatedLayout({ children }: Readonly<{ children: R
   if (!user || !sessionToken) return null;
 
   return (
-    <div className="flex min-h-screen w-full">
+    <div className="flex h-screen w-full overflow-hidden">
       <AppSidebar />
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <TopBar />
-        <main className="flex-1 overflow-auto">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">{children}</main>
       </div>
     </div>
   );

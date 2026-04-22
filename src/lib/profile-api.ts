@@ -33,7 +33,38 @@ export interface ProfileResponse {
   latest_conversation?: ProfileLatestConversation | null;
 }
 
-export async function fetchProfile(accessToken: string) {
+async function withProfileAuthRetry<T>(
+  request: (accessToken: string) => Promise<T>,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  try {
+    return await request(accessToken);
+  } catch (error) {
+    if (!(error instanceof Error) || !refreshAccessToken) {
+      throw error;
+    }
+
+    const message = error.message.toLowerCase();
+    const isUnauthorized =
+      message.includes("invalid bearer token") ||
+      message.includes("missing bearer token") ||
+      message.includes("unauthorized");
+
+    if (!isUnauthorized) {
+      throw error;
+    }
+
+    const refreshedToken = await refreshAccessToken();
+    if (!refreshedToken) {
+      throw error;
+    }
+
+    return request(refreshedToken);
+  }
+}
+
+async function fetchProfileRequest(accessToken: string) {
   const response = await fetch("/backend/api/v1/auth/profile", {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -49,7 +80,14 @@ export async function fetchProfile(accessToken: string) {
   return body as ProfileResponse;
 }
 
-export async function updateProfile(
+export async function fetchProfile(
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withProfileAuthRetry(fetchProfileRequest, accessToken, refreshAccessToken);
+}
+
+async function updateProfileRequest(
   accessToken: string,
   input: { display_name?: string | null; profile_image?: string | null },
 ) {
@@ -69,4 +107,16 @@ export async function updateProfile(
   }
 
   return body as ProfileResponse;
+}
+
+export async function updateProfile(
+  accessToken: string,
+  input: { display_name?: string | null; profile_image?: string | null },
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withProfileAuthRetry(
+    (token) => updateProfileRequest(token, input),
+    accessToken,
+    refreshAccessToken,
+  );
 }

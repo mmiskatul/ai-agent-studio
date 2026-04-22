@@ -55,15 +55,17 @@ export function AgentTestDrawer({
   showTrigger = true,
 }: AgentTestDrawerProps) {
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
+  const [internalOpen, setInternalOpen] = useState(false);
   const [agent, setAgent] = useState<Agent | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [messageActionId, setMessageActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const isOpen = open ?? internalOpen;
 
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || !isOpen) return;
 
     async function loadTestingChat() {
       setLoading(true);
@@ -108,7 +110,7 @@ export function AgentTestDrawer({
     }
 
     loadTestingChat();
-  }, [accessToken, agentId, authLoading, refreshAccessToken]);
+  }, [accessToken, agentId, authLoading, isOpen, refreshAccessToken]);
 
   const handleSend = useCallback(
     async (content: string) => {
@@ -197,7 +199,15 @@ export function AgentTestDrawer({
   );
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet
+      open={isOpen}
+      onOpenChange={(nextOpen) => {
+        if (open === undefined) {
+          setInternalOpen(nextOpen);
+        }
+        onOpenChange?.(nextOpen);
+      }}
+    >
       {showTrigger && (
         <SheetTrigger asChild>
           <Button className="fixed right-0 top-1/2 z-40 h-28 -translate-y-1/2 rounded-l-lg rounded-r-none px-3 shadow-lg [writing-mode:vertical-rl]">

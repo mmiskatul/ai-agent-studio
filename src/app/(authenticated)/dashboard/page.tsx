@@ -72,7 +72,7 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { accessToken } = useAuth();
+  const { accessToken, refreshAccessToken } = useAuth();
   const [dashboard, setDashboard] = useState<DashboardOverview>(emptyDashboard);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +88,7 @@ export default function DashboardPage() {
 
       setLoading(true);
       try {
-        const data = await fetchDashboardOverview(accessToken);
+        const data = await fetchDashboardOverview(accessToken, refreshAccessToken);
         setDashboard(data);
         setError(null);
       } catch (err) {
@@ -100,7 +100,7 @@ export default function DashboardPage() {
     }
 
     loadDashboard();
-  }, [accessToken]);
+  }, [accessToken, refreshAccessToken]);
 
   const categories = ["All", ...dashboard.categories.map((item) => item.name)];
   const filteredTopAgents = dashboard.top_agents.filter((agent) => {

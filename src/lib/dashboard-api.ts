@@ -37,7 +37,38 @@ export interface DashboardOverview {
   recent_activity: DashboardActivityItem[];
 }
 
-export async function fetchDashboardOverview(accessToken: string) {
+async function withDashboardAuthRetry<T>(
+  request: (accessToken: string) => Promise<T>,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  try {
+    return await request(accessToken);
+  } catch (error) {
+    if (!(error instanceof Error) || !refreshAccessToken) {
+      throw error;
+    }
+
+    const message = error.message.toLowerCase();
+    const isUnauthorized =
+      message.includes("invalid bearer token") ||
+      message.includes("missing bearer token") ||
+      message.includes("unauthorized");
+
+    if (!isUnauthorized) {
+      throw error;
+    }
+
+    const refreshedToken = await refreshAccessToken();
+    if (!refreshedToken) {
+      throw error;
+    }
+
+    return request(refreshedToken);
+  }
+}
+
+async function fetchDashboardOverviewRequest(accessToken: string) {
   const response = await fetch("/backend/api/v1/dashboard", {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -51,4 +82,11 @@ export async function fetchDashboardOverview(accessToken: string) {
   }
 
   return body as DashboardOverview;
+}
+
+export async function fetchDashboardOverview(
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withDashboardAuthRetry(fetchDashboardOverviewRequest, accessToken, refreshAccessToken);
 }

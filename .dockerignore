@@ -1,0 +1,10 @@
+.git
+.gitignore
+.next
+node_modules
+backend/.venv
+backend/__pycache__
+backend/.pytest_cache
+*.log
+Dockerfile
+docker-compose.yml
