@@ -62,7 +62,8 @@ export default function NewAgentPage() {
       new Set(
         savedAgents
           .map((agent) => agent.template_type?.trim())
-          .filter((value): value is string => Boolean(value) && !presetOptions.includes(value)),
+          .filter((value): value is string => typeof value === "string" && value.length > 0)
+          .filter((value) => !presetOptions.includes(value)),
       ),
     ).sort((a, b) => a.localeCompare(b));
 
