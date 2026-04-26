@@ -35,10 +35,15 @@ function EmailValidationForm() {
     try {
       if (mode === "forgot") {
         await verifyForgotPassword(email, code.trim());
+        const params = new URLSearchParams({
+          email,
+          code: code.trim(),
+        });
+        router.replace(`/reset-password?${params.toString()}`);
       } else {
         await verifyEmail(email, code.trim());
+        router.replace(AUTHENTICATED_HOME);
       }
-      router.replace(AUTHENTICATED_HOME);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to verify email");
     } finally {

@@ -20,6 +20,10 @@ interface EmailValidationResponse {
   message: string;
 }
 
+interface MessageResponse {
+  message: string;
+}
+
 interface TokenResponse {
   access_token: string;
   session_token: string;
@@ -144,16 +148,19 @@ export function useAuth() {
     });
   }, []);
 
-  const verifyForgotPassword = useCallback(
-    async (email: string, code: string) => {
-      const response = await requestJson<TokenResponse>("/auth/forgot-password/verify", {
-        method: "POST",
-        body: JSON.stringify({ email, code }),
-      });
-      return storeTokenResponse(response);
-    },
-    [storeTokenResponse],
-  );
+  const verifyForgotPassword = useCallback(async (email: string, code: string) => {
+    return requestJson<MessageResponse>("/auth/forgot-password/verify", {
+      method: "POST",
+      body: JSON.stringify({ email, code }),
+    });
+  }, []);
+
+  const resetForgotPassword = useCallback(async (email: string, code: string, password: string) => {
+    return requestJson<MessageResponse>("/auth/forgot-password/reset", {
+      method: "POST",
+      body: JSON.stringify({ email, code, password }),
+    });
+  }, []);
 
   const refreshAccessToken = useCallback(async () => {
     if (!sessionToken) return null;
@@ -191,6 +198,7 @@ export function useAuth() {
     verifyEmail,
     forgotPassword,
     verifyForgotPassword,
+    resetForgotPassword,
     refreshAccessToken,
     signOut,
   };
