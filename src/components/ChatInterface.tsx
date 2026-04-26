@@ -185,7 +185,7 @@ export function ChatInterface({
             <h2 className="text-base font-bold text-foreground">
               {pageTitle?.trim() || agent.name}
             </h2>
-            {agent.status === "active" && <span className="h-2 w-2 rounded-full bg-primary" />}
+            {agent.status === "enabled" && <span className="h-2 w-2 rounded-full bg-primary" />}
           </div>
         </div>
       </div>

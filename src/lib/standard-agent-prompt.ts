@@ -2,11 +2,13 @@ export function buildStandardSystemPrompt(input: {
   name: string;
   role: string;
   purpose: string;
+  language?: "EN" | "DE" | "RU";
   templateType?: string | null;
 }) {
   const name = input.name.trim() || "This agent";
   const role = input.role.trim() || "AI assistant";
   const purpose = input.purpose.trim();
+  const language = input.language || "EN";
   const template = input.templateType?.trim() || "general";
 
   return [
@@ -16,6 +18,10 @@ export function buildStandardSystemPrompt(input: {
     purpose || "Help the user with the tasks they ask for.",
     "",
     `Base template context: ${template}.`,
+    "",
+    "Language rules:",
+    `- Default response language is ${language}.`,
+    "- Keep the full response in that language unless the user explicitly asks to switch.",
     "",
     "Behavior rules:",
     "- Stay focused on the user's request and intended outcome.",

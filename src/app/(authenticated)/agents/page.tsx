@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bot, Check, Filter, MessageSquare, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
 import {
   deleteBackendAgent,
   fetchBackendAgent,
@@ -12,8 +13,9 @@ import {
   type Agent,
   type AgentUpdate,
 } from "@/lib/agent-api";
+import { getErrorMessage } from "@/lib/error-message";
 import { useAuth } from "@/hooks/use-auth";
-import { AgentForm } from "@/components/AgentForm";
+import { AgentForm, type AgentFormValues } from "@/components/AgentForm";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -42,6 +44,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { fetchTemplates, type AgentTemplate } from "@/lib/template-api";
+import { buildStandardSystemPrompt } from "@/lib/standard-agent-prompt";
 
 export default function AgentsPage() {
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
@@ -57,61 +61,112 @@ export default function AgentsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [templates, setTemplates] = useState<AgentTemplate[]>([]);
+
+  const loadAgents = useCallback(async () => {
+    if (!accessToken) {
+      setLoading(false);
+      setError("Sign in again to load your agents.");
+      return;
+    }
+
+    try {
+      setError("");
+      const data = await fetchBackendAgents(accessToken, refreshAccessToken);
+      setAgents(data);
+    } catch (err) {
+      const message = getErrorMessage(err, "Failed to load agents");
+      console.error("Failed to load agents:", err);
+      setError(message);
+      toast.error("Could not load agents", { description: message });
+    } finally {
+      setLoading(false);
+    }
+  }, [accessToken, refreshAccessToken]);
 
   useEffect(() => {
     if (authLoading) return;
+    void loadAgents();
+  }, [authLoading, loadAgents]);
 
-    async function loadAgents() {
-      if (!accessToken) {
-        setLoading(false);
-        setError("Sign in again to load your agents.");
-        return;
-      }
+  useEffect(() => {
+    const token = accessToken;
+    if (!token) return;
 
+    async function loadTemplates(tokenValue: string) {
       try {
-        setError("");
-        const data = await fetchBackendAgents(accessToken, refreshAccessToken);
-        setAgents(data);
+        const data = await fetchTemplates(tokenValue, refreshAccessToken);
+        setTemplates(data);
       } catch (err) {
-        console.error("Failed to load agents:", err);
-        setError(err instanceof Error ? err.message : "Failed to load agents");
-      } finally {
-        setLoading(false);
+        const message = getErrorMessage(err, "Failed to load templates");
+        console.error("Failed to load templates:", err);
+        toast.error("Could not load templates", { description: message });
       }
     }
 
-    loadAgents();
-  }, [accessToken, authLoading, refreshAccessToken]);
+    void loadTemplates(token);
+  }, [accessToken, refreshAccessToken]);
 
   async function handleOpenEdit(agentId: string) {
     if (!accessToken) return;
 
     setLoadingEditId(agentId);
+    setEditError("");
     try {
       const agent = await fetchBackendAgent(agentId, accessToken, refreshAccessToken);
       setEditTarget(agent);
     } catch (err) {
+      const message = getErrorMessage(err, "Failed to load agent");
       console.error("Failed to load agent for editing:", err);
+      setEditError(message);
+      toast.error("Could not load agent", { description: message });
     } finally {
       setLoadingEditId(null);
     }
   }
 
-  async function handleUpdate(values: AgentUpdate) {
+  async function handleUpdate(values: AgentFormValues) {
     if (!editTarget || !accessToken) return;
 
     setIsUpdating(true);
+    setEditError("");
     try {
+      const selectedTemplate = templates.find((template) => template.id === values.templateId);
       const updated = await updateBackendAgent(
         editTarget.id,
-        values,
+        {
+          name: values.name,
+          role: values.role,
+          purpose: values.purpose,
+          description: values.purpose,
+          language: values.language,
+          status: values.status,
+          template_type: selectedTemplate?.key || editTarget.template_type,
+          template_id: values.templateId || null,
+          system_prompt:
+            editTarget.system_prompt ||
+            selectedTemplate?.system_prompt ||
+            buildStandardSystemPrompt({
+              name: values.name,
+              role: values.role,
+              purpose: values.purpose,
+              language: values.language,
+              templateType: selectedTemplate?.key || "custom",
+            }),
+          is_active: values.status === "enabled",
+        } satisfies AgentUpdate,
         accessToken,
         refreshAccessToken,
       );
-      setAgents((prev) => prev.map((agent) => (agent.id === updated.id ? updated : agent)));
+      await loadAgents();
       setEditTarget(null);
+      toast.success("Agent updated");
     } catch (err) {
+      const message = getErrorMessage(err, "Failed to update agent");
       console.error("Failed to update agent:", err);
+      setEditError(message);
+      toast.error("Could not update agent", { description: message });
     } finally {
       setIsUpdating(false);
     }
@@ -123,9 +178,12 @@ export default function AgentsPage() {
     setIsDeleting(true);
     try {
       await deleteBackendAgent(deleteTarget.id, accessToken, refreshAccessToken);
-      setAgents((prev) => prev.filter((agent) => agent.id !== deleteTarget.id));
+      await loadAgents();
+      toast.success("Agent deleted");
     } catch (err) {
+      const message = getErrorMessage(err, "Failed to delete agent");
       console.error("Failed to delete agent:", err);
+      toast.error("Could not delete agent", { description: message });
     } finally {
       setIsDeleting(false);
       setDeleteTarget(null);
@@ -235,8 +293,8 @@ export default function AgentsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="inactive">Inactive</SelectItem>
+            <SelectItem value="enabled">Enabled</SelectItem>
+            <SelectItem value="disabled">Disabled</SelectItem>
           </SelectContent>
         </Select>
 
@@ -350,7 +408,7 @@ export default function AgentsPage() {
                   <TableCell>
                     <span
                       className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium capitalize ${
-                        agent.status === "active"
+                        agent.status === "enabled"
                           ? "bg-success/10 text-success"
                           : "bg-muted text-muted-foreground"
                       }`}
@@ -417,20 +475,30 @@ export default function AgentsPage() {
             <DialogTitle>Edit Agent</DialogTitle>
           </DialogHeader>
 
+          {editError ? (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+              {editError}
+            </div>
+          ) : null}
+
           {editTarget && (
             <AgentForm
               key={editTarget.id}
               initialValues={{
                 name: editTarget.name,
                 role: editTarget.role,
-                purpose: editTarget.purpose,
-                templateType: editTarget.template_type ?? "",
+                purpose: editTarget.description || editTarget.purpose,
+                language: editTarget.language,
+                templateId: editTarget.template_id ?? "",
                 status: editTarget.status,
               }}
+              templates={templates}
               onSubmit={handleUpdate}
               onCancel={() => setEditTarget(null)}
               submitLabel="Update"
               isSubmitting={isUpdating}
+              accessToken={accessToken}
+              refreshAccessToken={refreshAccessToken}
             />
           )}
         </DialogContent>

@@ -1,3 +1,5 @@
+import { getApiErrorMessage } from "@/lib/error-message";
+
 export interface ProfileStats {
   total_agents: number;
   active_agents: number;
@@ -74,7 +76,7 @@ async function fetchProfileRequest(accessToken: string) {
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error((body as { detail?: string }).detail || "Failed to load profile");
+    throw new Error(getApiErrorMessage(body, "Failed to load profile"));
   }
 
   return body as ProfileResponse;
@@ -103,7 +105,7 @@ async function updateProfileRequest(
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error((body as { detail?: string }).detail || "Failed to update profile");
+    throw new Error(getApiErrorMessage(body, "Failed to update profile"));
   }
 
   return body as ProfileResponse;

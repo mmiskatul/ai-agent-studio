@@ -1,3 +1,5 @@
+import { getApiErrorMessage } from "@/lib/error-message";
+
 async function postGeneratedText<TBody extends Record<string, unknown>, TResponse>(
   path: string,
   body: TBody,
@@ -15,15 +17,16 @@ async function postGeneratedText<TBody extends Record<string, unknown>, TRespons
   const responseBody = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(responseBody.detail || "Failed to generate content");
+    throw new Error(getApiErrorMessage(responseBody, "Failed to generate content"));
   }
 
   return responseBody as TResponse;
 }
 
-function buildDescriptionFallback(name: string) {
+function buildDescriptionFallback(name: string, role?: string) {
   const cleanedName = name.trim() || "This agent";
   const loweredName = cleanedName.toLowerCase();
+  const cleanedRole = role?.trim();
 
   if (/(sales|lead|outreach|revenue)/i.test(loweredName)) {
     return `${cleanedName} helps sales teams qualify leads, respond to buyer questions, and move deals forward with clearer next steps. It is useful for drafting outreach, handling objections, and turning pipeline activity into practical follow-up actions.`;
@@ -35,6 +38,10 @@ function buildDescriptionFallback(name: string) {
 
   if (/(data|analytics|report|insight)/i.test(loweredName)) {
     return `${cleanedName} helps teams analyze information, summarize findings, and turn data into actionable insights. It is useful for reporting, spotting patterns, and producing clear outputs that support better decisions.`;
+  }
+
+  if (cleanedRole) {
+    return `${cleanedName} works as a ${cleanedRole} and helps users complete related tasks with clear, practical outputs. It is useful for answering questions, drafting responses, organizing information, and suggesting next steps that are ready to use in real workflows.`;
   }
 
   return `${cleanedName} helps users complete focused work with clear, practical outputs. It is useful for answering questions, organizing information, and producing responses that are ready to use in real workflows.`;
@@ -73,15 +80,16 @@ async function withUnauthorizedRetry<T>(
 
 export async function generateAgentDescription(
   name: string,
+  role: string,
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
   try {
     const response = await withUnauthorizedRetry(
       (token) =>
-        postGeneratedText<{ name: string }, { short_description: string }>(
+        postGeneratedText<{ name: string; role: string }, { short_description: string }>(
           "generate-description",
-          { name },
+          { name, role },
           token,
         ),
       accessToken,
@@ -90,7 +98,7 @@ export async function generateAgentDescription(
 
     return response.short_description;
   } catch {
-    return buildDescriptionFallback(name);
+    return buildDescriptionFallback(name, role);
   }
 }
 

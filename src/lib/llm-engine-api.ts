@@ -1,3 +1,5 @@
+import { getApiErrorMessage } from "@/lib/error-message";
+
 export interface LLMEngineOption {
   value: string;
   label: string;
@@ -13,7 +15,7 @@ export async function fetchLLMEngineOptions() {
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to load LLM engines");
+    throw new Error(getApiErrorMessage(body, "Failed to load LLM engines"));
   }
 
   return body as LLMEngineOptionsResponse;

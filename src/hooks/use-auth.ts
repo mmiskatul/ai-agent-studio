@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { getApiErrorMessage } from "@/lib/error-message";
 
 export interface AuthUser {
   id: string;
@@ -44,7 +45,7 @@ async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Request failed");
+    throw new Error(getApiErrorMessage(body, "Request failed"));
   }
 
   return body as T;

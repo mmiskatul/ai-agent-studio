@@ -1,3 +1,5 @@
+import { getApiErrorMessage, getApiSuccessData } from "@/lib/error-message";
+
 export interface Agent {
   id: string;
   _id?: string;
@@ -5,10 +7,14 @@ export interface Agent {
   role: string;
   purpose: string;
   description?: string | null;
+  language: "EN" | "DE" | "RU";
   template_type: string | null;
+  template_id?: string | null;
   system_prompt: string;
   welcome_message?: string | null;
-  status: string;
+  status: "enabled" | "disabled";
+  owner_user_id?: string;
+  user_id?: string;
   queries_30d?: number;
   tools?: string[];
   model?: string | null;
@@ -139,8 +145,12 @@ function normalizeAgent(agent: Agent) {
     ...agent,
     id: agent.id || agent._id || "",
     purpose: agent.purpose || agent.description || "",
+    description: agent.description || agent.purpose || "",
+    language: agent.language || "EN",
     template_type: agent.template_type || null,
-    status: agent.status || (agent.is_active === false ? "inactive" : "active"),
+    template_id: agent.template_id || null,
+    status: agent.status || (agent.is_active === false ? "disabled" : "enabled"),
+    owner_user_id: agent.owner_user_id || agent.user_id || "",
   };
 }
 
@@ -272,7 +282,7 @@ function normalizeStructuredHistory(agentId: string, chatId: string | null, body
 }
 
 export function isAgentActive(agent: Agent) {
-  return agent.status === "active" && agent.is_active !== false;
+  return agent.status === "enabled" && agent.is_active !== false;
 }
 
 export async function fetchAgents() {
@@ -291,7 +301,7 @@ async function fetchBackendAgentsRequest(accessToken: string) {
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to load agents");
+    throw new Error(getApiErrorMessage(body, "Failed to load agents"));
   }
 
   return (body as Agent[]).map(normalizeAgent).filter((agent) => agent.id);
@@ -335,6 +345,37 @@ export async function fetchBackendAgents(
   return withBackendAuthRetry(fetchBackendAgentsRequest, accessToken, refreshAccessToken);
 }
 
+async function createBackendAgentRequest(agent: AgentInsert, accessToken: string) {
+  const response = await fetch("/backend/api/v1/agents", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(agent),
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(body, "Failed to create agent"));
+  }
+
+  return normalizeAgent(getApiSuccessData<Agent>(body));
+}
+
+export async function createBackendAgent(
+  agent: AgentInsert,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => createBackendAgentRequest(agent, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
 async function fetchBackendAgentRequest(agentId: string, accessToken: string) {
   const response = await fetch(`/backend/api/v1/agents/${agentId}`, {
     headers: {
@@ -345,7 +386,7 @@ async function fetchBackendAgentRequest(agentId: string, accessToken: string) {
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to load agent");
+    throw new Error(getApiErrorMessage(body, "Failed to load agent"));
   }
 
   return normalizeAgent(body as Agent);
@@ -388,7 +429,7 @@ async function generateBackendAgentResponseRequest(
     if (detail.toLowerCase().includes("llm provider request failed")) {
       return buildLocalAgentFallback(agentId, content, chatId);
     }
-    throw new Error(body.detail || "Failed to generate agent response");
+    throw new Error(getApiErrorMessage(body, "Failed to generate agent response"));
   }
 
   const parsedBody = body as AgentResponseGenerateResult;
@@ -438,7 +479,7 @@ async function fetchBackendAgentResponseHistoryRequest(
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to load chat history");
+    throw new Error(getApiErrorMessage(body, "Failed to load chat history"));
   }
 
   return normalizeBackendAgentResponseHistory(body);
@@ -467,7 +508,7 @@ async function fetchBackendAgentResponsePagesRequest(agentId: string, accessToke
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to load response pages");
+    throw new Error(getApiErrorMessage(body, "Failed to load response pages"));
   }
 
   return (body as AgentResponsePage[]).map((page) => ({
@@ -505,7 +546,7 @@ async function createBackendAgentResponsePageRequest(
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to create response page");
+    throw new Error(getApiErrorMessage(body, "Failed to create response page"));
   }
 
   return {
@@ -541,7 +582,7 @@ async function deleteBackendAgentResponsePageRequest(
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || "Failed to delete response page");
+    throw new Error(getApiErrorMessage(body, "Failed to delete response page"));
   }
 }
 
@@ -568,7 +609,7 @@ async function fetchLatestBackendAgentResponseHistoryRequest(accessToken: string
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to load latest agent response history");
+    throw new Error(getApiErrorMessage(body, "Failed to load latest agent response history"));
   }
 
   return normalizeBackendAgentResponseHistory(body);
@@ -603,7 +644,7 @@ async function updateBackendAgentResponseMessageRequest(
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to update message");
+    throw new Error(getApiErrorMessage(body, "Failed to update message"));
   }
 
   return normalizeBackendAgentResponseHistory(body);
@@ -638,7 +679,7 @@ async function deleteBackendAgentResponseMessageRequest(
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to delete message");
+    throw new Error(getApiErrorMessage(body, "Failed to delete message"));
   }
 
   return normalizeBackendAgentResponseHistory(body);
@@ -674,10 +715,10 @@ async function updateBackendAgentRequest(
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to update agent");
+    throw new Error(getApiErrorMessage(body, "Failed to update agent"));
   }
 
-  return body as Agent;
+  return normalizeAgent(getApiSuccessData<Agent>(body));
 }
 
 export async function updateBackendAgent(
@@ -703,7 +744,7 @@ async function deleteBackendAgentRequest(agentId: string, accessToken: string) {
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || "Failed to delete agent");
+    throw new Error(getApiErrorMessage(body, "Failed to delete agent"));
   }
 }
 
@@ -729,7 +770,7 @@ async function fetchBackendChatsRequest(agentId: string, accessToken: string) {
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to load chats");
+    throw new Error(getApiErrorMessage(body, "Failed to load chats"));
   }
 
   return (body as Chat[]).map(normalizeChat).filter((chat) => chat.id);
@@ -758,7 +799,7 @@ async function createBackendChatRequest(agentId: string, accessToken: string) {
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to create chat");
+    throw new Error(getApiErrorMessage(body, "Failed to create chat"));
   }
 
   return normalizeChat(body as Chat);
@@ -786,7 +827,7 @@ async function deleteBackendChatRequest(agentId: string, chatId: string, accessT
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || "Failed to delete chat");
+    throw new Error(getApiErrorMessage(body, "Failed to delete chat"));
   }
 }
 
@@ -813,7 +854,7 @@ async function fetchBackendMessagesRequest(agentId: string, accessToken: string)
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to load messages");
+    throw new Error(getApiErrorMessage(body, "Failed to load messages"));
   }
 
   return body as Message[];
@@ -833,7 +874,7 @@ async function fetchBackendChatMessagesRequest(
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to load messages");
+    throw new Error(getApiErrorMessage(body, "Failed to load messages"));
   }
 
   return body as Message[];
@@ -877,7 +918,7 @@ async function sendBackendMessageRequest(agentId: string, content: string, acces
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to send message");
+    throw new Error(getApiErrorMessage(body, "Failed to send message"));
   }
 
   return body as {
@@ -917,7 +958,7 @@ async function sendBackendChatMessageRequest(
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to send message");
+    throw new Error(getApiErrorMessage(body, "Failed to send message"));
   }
 
   return body as {
@@ -958,7 +999,7 @@ async function updateBackendMessageRequest(
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to update message");
+    throw new Error(getApiErrorMessage(body, "Failed to update message"));
   }
 
   return body as {
@@ -1003,7 +1044,7 @@ async function updateBackendChatMessageRequest(
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to update message");
+    throw new Error(getApiErrorMessage(body, "Failed to update message"));
   }
 
   return body as {
@@ -1041,7 +1082,7 @@ async function deleteBackendMessageRequest(
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || "Failed to delete message");
+    throw new Error(getApiErrorMessage(body, "Failed to delete message"));
   }
 }
 
@@ -1076,7 +1117,7 @@ async function deleteBackendChatMessageRequest(
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || "Failed to delete message");
+    throw new Error(getApiErrorMessage(body, "Failed to delete message"));
   }
 }
 

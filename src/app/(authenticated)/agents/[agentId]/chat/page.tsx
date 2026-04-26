@@ -758,6 +758,8 @@ export default function ChatPage() {
             pageTitle={activePageTitle}
             messages={messages}
             onSend={handleSend}
+            onDeleteMessage={handleDeleteMessage}
+            onEditMessage={handleEditMessage}
             isLoading={isGenerating}
             streamingContent=""
             error={error}

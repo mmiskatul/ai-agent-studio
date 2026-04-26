@@ -1,3 +1,5 @@
+import { getApiErrorMessage } from "@/lib/error-message";
+
 export interface DashboardStats {
   total_agents: number;
   active_agents: number;
@@ -6,6 +8,8 @@ export interface DashboardStats {
   total_chats: number;
   total_messages: number;
   queries_30d: number;
+  total_leads: number;
+  total_staff: number;
 }
 
 export interface DashboardAgentSummary {
@@ -78,7 +82,7 @@ async function fetchDashboardOverviewRequest(accessToken: string) {
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to load dashboard overview");
+    throw new Error(getApiErrorMessage(body, "Failed to load dashboard overview"));
   }
 
   return body as DashboardOverview;

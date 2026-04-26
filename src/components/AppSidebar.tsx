@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo } from "react";
-import { Bot, CircleUserRound, Compass, LayoutDashboard, LogOut, Users } from "lucide-react";
+import { Bot, CircleUserRound, Compass, LayoutDashboard, LogOut, Phone, Users } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { SIGN_IN_ROUTE } from "@/lib/routes";
@@ -18,6 +18,8 @@ export function AppSidebar() {
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { label: "Explore Agents", href: "/explore-agents", icon: Compass },
       { label: "Agents", href: "/agents", icon: Users },
+      { label: "Leads", href: "/leads", icon: Phone },
+      { label: "Staff", href: "/staff", icon: Users },
       { label: "Profile", href: "/profile", icon: CircleUserRound },
     ],
     [],

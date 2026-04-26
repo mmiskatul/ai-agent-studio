@@ -3,18 +3,30 @@
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
-import { fetchAgent, updateAgent, deleteAgent, type Agent } from "@/lib/agent-api";
-import { AgentForm } from "@/components/AgentForm";
+import { toast } from "sonner";
+import { AgentForm, type AgentFormValues } from "@/components/AgentForm";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/hooks/use-auth";
+import {
+  deleteBackendAgent,
+  fetchBackendAgent,
+  updateBackendAgent,
+  type Agent,
+} from "@/lib/agent-api";
+import { getErrorMessage } from "@/lib/error-message";
 import { AUTHENTICATED_HOME } from "@/lib/routes";
+import { buildStandardSystemPrompt } from "@/lib/standard-agent-prompt";
+import { fetchTemplates, type AgentTemplate } from "@/lib/template-api";
 
 export default function EditAgentPage() {
   const params = useParams<{ agentId: string }>();
   const agentId = params.agentId;
   const router = useRouter();
+  const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
   const [agent, setAgent] = useState<Agent | null>(null);
+  const [templates, setTemplates] = useState<AgentTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -22,38 +34,95 @@ export default function EditAgentPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetchAgent(agentId)
-      .then(setAgent)
-      .catch(() => setError("Agent not found"))
-      .finally(() => setLoading(false));
-  }, [agentId]);
+    if (authLoading) return;
 
-  async function handleSubmit(values: {
-    name: string;
-    role: string;
-    purpose: string;
-    template_type: string;
-    system_prompt: string;
-    status: string;
-  }) {
+    async function loadData() {
+      const token = accessToken;
+      if (!token) {
+        const message = "Sign in again to load this agent.";
+        setError(message);
+        toast.error("Could not load agent", { description: message });
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const [agentData, templateData] = await Promise.all([
+          fetchBackendAgent(agentId, token, refreshAccessToken),
+          fetchTemplates(token, refreshAccessToken),
+        ]);
+        setAgent(agentData);
+        setTemplates(templateData);
+        setError("");
+      } catch (err) {
+        const message = getErrorMessage(err, "Agent not found");
+        setError(message);
+        toast.error("Could not load agent", { description: message });
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void loadData();
+  }, [accessToken, agentId, authLoading, refreshAccessToken]);
+
+  async function handleSubmit(values: AgentFormValues) {
+    if (!accessToken || !agent) return;
+
     setIsSubmitting(true);
+    setError("");
     try {
-      await updateAgent(agentId, values);
-      router.push(AUTHENTICATED_HOME);
+      const selectedTemplate = templates.find((template) => template.id === values.templateId);
+      await updateBackendAgent(
+        agentId,
+        {
+          name: values.name,
+          role: values.role,
+          purpose: values.purpose,
+          description: values.purpose,
+          language: values.language,
+          status: values.status,
+          template_type: selectedTemplate?.key || agent.template_type,
+          template_id: values.templateId || null,
+          system_prompt:
+            agent.system_prompt ||
+            selectedTemplate?.system_prompt ||
+            buildStandardSystemPrompt({
+              name: values.name,
+              role: values.role,
+              purpose: values.purpose,
+              language: values.language,
+              templateType: selectedTemplate?.key || "custom",
+            }),
+          is_active: values.status === "enabled",
+        },
+        accessToken,
+        refreshAccessToken,
+      );
+      toast.success("Agent updated");
+      router.push("/agents");
     } catch (err) {
-      console.error("Failed to update agent:", err);
+      const message = getErrorMessage(err, "Failed to update agent");
+      setError(message);
+      toast.error("Could not update agent", { description: message });
     } finally {
       setIsSubmitting(false);
     }
   }
 
   async function handleDelete() {
+    if (!accessToken) return;
+
     setIsDeleting(true);
+    setError("");
     try {
-      await deleteAgent(agentId);
+      await deleteBackendAgent(agentId, accessToken, refreshAccessToken);
+      toast.success("Agent deleted");
       router.push(AUTHENTICATED_HOME);
     } catch (err) {
-      console.error("Failed to delete agent:", err);
+      const message = getErrorMessage(err, "Failed to delete agent");
+      setError(message);
+      toast.error("Could not delete agent", { description: message });
     } finally {
       setIsDeleting(false);
     }
@@ -71,11 +140,6 @@ export default function EditAgentPage() {
             <Skeleton className="h-10 w-full rounded-lg" />
             <Skeleton className="h-10 w-full rounded-lg" />
             <Skeleton className="h-24 w-full rounded-lg" />
-            <Skeleton className="h-40 w-full rounded-lg" />
-            <div className="flex justify-end gap-3">
-              <Skeleton className="h-10 w-24 rounded-lg" />
-              <Skeleton className="h-10 w-32 rounded-lg" />
-            </div>
           </div>
         </div>
       </div>
@@ -108,18 +172,27 @@ export default function EditAgentPage() {
         </Button>
       </div>
       <div className="rounded-xl border border-border bg-card p-6">
+        {error ? (
+          <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+            {error}
+          </div>
+        ) : null}
         <AgentForm
           initialValues={{
             name: agent.name,
             role: agent.role,
-            purpose: agent.purpose,
-            templateType: agent.template_type ?? "",
+            purpose: agent.description || agent.purpose,
+            language: agent.language,
+            templateId: agent.template_id ?? "",
             status: agent.status,
           }}
+          templates={templates}
           onSubmit={handleSubmit}
           onCancel={() => router.push(AUTHENTICATED_HOME)}
           submitLabel="Save Changes"
           isSubmitting={isSubmitting}
+          accessToken={accessToken}
+          refreshAccessToken={refreshAccessToken}
         />
       </div>
 

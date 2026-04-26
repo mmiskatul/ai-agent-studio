@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Activity, Bot, Check, CheckCircle2, Clock3, Filter, Search } from "lucide-react";
+import { Activity, Bot, Check, CheckCircle2, Clock3, Filter, Search, Users } from "lucide-react";
 import {
   fetchDashboardOverview,
   type DashboardOverview,
@@ -38,6 +38,8 @@ const emptyDashboard: DashboardOverview = {
     total_chats: 0,
     total_messages: 0,
     queries_30d: 0,
+    total_leads: 0,
+    total_staff: 0,
   },
   top_agents: [],
   categories: [],
@@ -47,8 +49,8 @@ const emptyDashboard: DashboardOverview = {
 function DashboardSkeleton() {
   return (
     <>
-      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, index) => (
           <div key={index} className="agent-card flex items-center gap-4 p-5">
             <Skeleton className="h-12 w-12 rounded-lg" />
             <div className="space-y-2">
@@ -144,6 +146,18 @@ export default function DashboardPage() {
       value: dashboard.stats.recently_updated_agents,
       description: "Changed in last 7 days",
       icon: Activity,
+    },
+    {
+      label: "Total Leads",
+      value: dashboard.stats.total_leads,
+      description: "Captured across your agents",
+      icon: Users,
+    },
+    {
+      label: "Staff Members",
+      value: dashboard.stats.total_staff,
+      description: "Workspace team access",
+      icon: Users,
     },
   ];
 
@@ -260,7 +274,7 @@ export default function DashboardPage() {
                       <TableCell>
                         <span
                           className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${
-                            agent.status === "active"
+                            agent.status === "enabled"
                               ? "bg-success/10 text-success"
                               : "bg-muted text-muted-foreground"
                           }`}
@@ -270,7 +284,7 @@ export default function DashboardPage() {
                       </TableCell>
                       <TableCell className="text-muted-foreground">{agent.category}</TableCell>
                       <TableCell className="text-right">
-                        {agent.status === "active" ? (
+                        {agent.status === "enabled" ? (
                           <Link
                             href={`/agents/${agent.id}/chat?name=${encodeURIComponent(agent.name)}`}
                           >

@@ -25,7 +25,7 @@ export function AgentCard({ agent, onDelete }: AgentCardProps) {
         </div>
         <span
           className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-            agent.status === "active"
+            agent.status === "enabled"
               ? "bg-success/10 text-success"
               : "bg-muted text-muted-foreground"
           }`}

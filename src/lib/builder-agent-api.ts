@@ -1,3 +1,6 @@
+import { getApiErrorMessage, getApiSuccessData } from "@/lib/error-message";
+import type { Agent } from "@/lib/agent-api";
+
 export interface CreateBuilderAgentInput {
   name: string;
   shortDescription: string;
@@ -31,10 +34,10 @@ async function postBuilderAgent(input: CreateBuilderAgentInput, accessToken: str
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.detail || "Failed to create agent");
+    throw new Error(getApiErrorMessage(body, "Failed to create agent"));
   }
 
-  return body;
+  return getApiSuccessData<Agent>(body);
 }
 
 export async function createBuilderAgent(

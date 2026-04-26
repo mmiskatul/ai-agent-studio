@@ -192,7 +192,7 @@ export default function ExploreAgentsPage() {
                     <h2 className="text-lg font-bold tracking-tight text-foreground">
                       {agent.name}
                     </h2>
-                    {agent.status === "active" && (
+                    {agent.status === "enabled" && (
                       <span className="h-2 w-2 rounded-full bg-primary" aria-label="Active" />
                     )}
                   </div>
