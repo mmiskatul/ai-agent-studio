@@ -69,6 +69,7 @@ export default function NewAgentPage() {
           role: values.role,
           purpose: values.purpose,
           description: values.purpose,
+          knowledge_text: values.knowledgeText || null,
           language: values.language,
           template_type: selectedTemplate?.key || null,
           template_id: values.templateId || null,

@@ -1,5 +1,16 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Loader2, AlertCircle, Bot, User, Pencil, Trash2, Check, X } from "lucide-react";
+import {
+  Send,
+  Loader2,
+  AlertCircle,
+  Bot,
+  User,
+  Pencil,
+  Trash2,
+  Check,
+  X,
+  Paperclip,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -9,7 +20,7 @@ interface ChatInterfaceProps {
   agent: Agent;
   pageTitle?: string;
   messages: Message[];
-  onSend: (content: string) => void;
+  onSend: (content: string, file?: File | null) => void;
   isLoading: boolean;
   streamingContent: string;
   error: string | null;
@@ -128,10 +139,12 @@ export function ChatInterface({
   totalMessageCount = 0,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const welcomeMessage =
     agent.welcome_message?.trim() ||
     `Hi, I'm ${agent.name}. I can help with ${
@@ -151,9 +164,14 @@ export function ChatInterface({
 
   function handleSend() {
     const text = input.trim();
-    if (!text || isLoading) return;
+    if ((!text && !selectedFile) || isLoading) return;
+    const file = selectedFile;
     setInput("");
-    onSend(text);
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    onSend(text, file);
   }
 
   function startEditing(message: Message) {
@@ -377,7 +395,52 @@ export function ChatInterface({
       </div>
 
       <div className="border-t border-border bg-card p-4">
-        <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-border bg-background px-5 py-2 shadow-sm">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.txt,.md,.csv,.json"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0] || null;
+            setSelectedFile(file);
+          }}
+          disabled={isLoading}
+        />
+        <div className="mx-auto flex max-w-3xl flex-col gap-3 rounded-2xl border border-border bg-background px-5 py-3 shadow-sm">
+          {selectedFile && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/50 px-3 py-2 text-xs font-medium text-foreground">
+              <div className="flex min-w-0 items-center gap-2">
+                <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate">{selectedFile.name}</span>
+              </div>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 shrink-0"
+                onClick={() => {
+                  setSelectedFile(null);
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = "";
+                  }
+                }}
+                disabled={isLoading}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
+          <div className="flex items-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-full"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading}
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
           <textarea
             ref={inputRef}
             value={input}
@@ -395,13 +458,14 @@ export function ChatInterface({
           />
           <Button
             onClick={handleSend}
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || (!input.trim() && !selectedFile)}
             size="icon"
             className="h-9 w-9 rounded-full"
           >
             <Send className="h-4 w-4" />
           </Button>
         </div>
+      </div>
       </div>
     </div>
   );

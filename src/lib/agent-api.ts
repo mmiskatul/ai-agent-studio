@@ -7,6 +7,7 @@ export interface Agent {
   role: string;
   purpose: string;
   description?: string | null;
+  knowledge_text?: string | null;
   language: "EN" | "DE" | "RU";
   template_type: string | null;
   template_id?: string | null;
@@ -28,6 +29,13 @@ export interface Agent {
 
 export type AgentInsert = Omit<Agent, "id" | "queries_30d" | "created_at" | "updated_at">;
 export type AgentUpdate = Partial<AgentInsert>;
+
+export interface AgentKnowledgeUploadResult {
+  file_name: string;
+  content_type: string;
+  extracted_text: string;
+  character_count: number;
+}
 
 export interface Chat {
   id: string;
@@ -360,6 +368,39 @@ export async function fetchBackendAgents(
   return withBackendAuthRetry(fetchBackendAgentsRequest, accessToken, refreshAccessToken);
 }
 
+async function uploadAgentKnowledgeFileRequest(file: File, accessToken: string) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch("/backend/api/v1/agents/knowledge/extract", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: formData,
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(body, "Failed to extract uploaded knowledge"));
+  }
+
+  return body as AgentKnowledgeUploadResult;
+}
+
+export async function uploadAgentKnowledgeFile(
+  file: File,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => uploadAgentKnowledgeFileRequest(file, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
 async function createBackendAgentRequest(agent: AgentInsert, accessToken: string) {
   const response = await fetch("/backend/api/v1/agents", {
     method: "POST",
@@ -423,6 +464,8 @@ async function generateBackendAgentResponseRequest(
   agentId: string,
   content: string,
   chatId: string | null,
+  attachmentText: string | null,
+  attachmentName: string | null,
   accessToken: string,
 ): Promise<AgentResponseGenerateResult> {
   const response = await fetch(`/backend/api/v1/agents/${agentId}/response`, {
@@ -434,6 +477,8 @@ async function generateBackendAgentResponseRequest(
     body: JSON.stringify({
       content,
       chat_id: chatId || undefined,
+      attachment_text: attachmentText || undefined,
+      attachment_name: attachmentName || undefined,
     }),
   });
 
@@ -462,11 +507,21 @@ export async function generateBackendAgentResponse(
   agentId: string,
   content: string,
   chatId: string | null,
+  attachmentText: string | null,
+  attachmentName: string | null,
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
   return withBackendAuthRetry(
-    (token) => generateBackendAgentResponseRequest(agentId, content, chatId, token),
+    (token) =>
+      generateBackendAgentResponseRequest(
+        agentId,
+        content,
+        chatId,
+        attachmentText,
+        attachmentName,
+        token,
+      ),
     accessToken,
     refreshAccessToken,
   );

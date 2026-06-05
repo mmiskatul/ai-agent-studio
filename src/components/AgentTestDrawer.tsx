@@ -11,6 +11,7 @@ import {
   fetchBackendAgents,
   generateBackendAgentResponse,
   isAgentActive,
+  uploadAgentKnowledgeFile,
   updateBackendAgentResponseMessage,
   type Agent,
   type Message,
@@ -133,19 +134,27 @@ export function AgentTestDrawer({
   }, [accessToken, agentId, authLoading, isOpen, refreshAccessToken]);
 
   const handleSend = useCallback(
-    async (content: string) => {
+    async (content: string, file?: File | null) => {
       if (!agent || !accessToken) return;
 
       setError(null);
       setIsStreaming(true);
-      const optimisticMessage = createOptimisticUserMessage(content);
+      const normalizedContent = content.trim();
+      const optimisticContent =
+        normalizedContent || (file ? `[Attached file: ${file.name}]` : content);
+      const optimisticMessage = createOptimisticUserMessage(optimisticContent);
       setMessages((prev) => [...prev, optimisticMessage]);
 
       try {
+        const uploadedAttachment = file
+          ? await uploadAgentKnowledgeFile(file, accessToken, refreshAccessToken)
+          : null;
         const response = await generateBackendAgentResponse(
           agent.id,
-          content,
+          normalizedContent,
           null,
+          uploadedAttachment?.extracted_text || null,
+          uploadedAttachment?.file_name || file?.name || null,
           accessToken,
           refreshAccessToken,
         );

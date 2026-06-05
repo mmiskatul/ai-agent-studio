@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Paperclip, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { uploadAgentKnowledgeFile } from "@/lib/agent-api";
 import { generateAgentDescription } from "@/lib/agent-generate-api";
 import type { AgentTemplate } from "@/lib/template-api";
 
@@ -13,6 +14,7 @@ export interface AgentFormValues {
   name: string;
   role: string;
   purpose: string;
+  knowledgeText: string;
   language: "EN" | "DE" | "RU";
   status: "enabled" | "disabled";
   templateId: string;
@@ -34,6 +36,7 @@ const defaultValues: AgentFormValues = {
   name: "",
   role: "",
   purpose: "",
+  knowledgeText: "",
   language: "EN",
   status: "enabled",
   templateId: "",
@@ -85,6 +88,8 @@ export function AgentForm({
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
+  const [isUploadingKnowledge, setIsUploadingKnowledge] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (draftStorageKey) {
@@ -140,6 +145,7 @@ export function AgentForm({
       name: values.name.trim(),
       role: values.role.trim(),
       purpose: values.purpose.trim(),
+      knowledgeText: values.knowledgeText.trim(),
       language: values.language,
       status: values.status,
       templateId: values.templateId,
@@ -177,6 +183,22 @@ export function AgentForm({
       updateValue("purpose", purpose);
     } finally {
       setIsGeneratingDescription(false);
+    }
+  }
+
+  async function handleKnowledgeUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || !accessToken) return;
+
+    setIsUploadingKnowledge(true);
+    try {
+      const result = await uploadAgentKnowledgeFile(file, accessToken, refreshAccessToken);
+      updateValue("knowledgeText", result.extracted_text);
+    } finally {
+      setIsUploadingKnowledge(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   }
 
@@ -234,6 +256,44 @@ export function AgentForm({
         {errors.purpose ? (
           <p className="mt-1 text-xs text-destructive">{errors.purpose}</p>
         ) : null}
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="agent-knowledge">Knowledge Base</Label>
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              id="agent-knowledge-file"
+              type="file"
+              accept=".pdf,.txt,.md,.csv,.json"
+              className="hidden"
+              onChange={handleKnowledgeUpload}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isSubmitting || isUploadingKnowledge || !accessToken}
+            >
+              <Paperclip className="h-3.5 w-3.5" />
+              {isUploadingKnowledge ? "Uploading..." : "Upload PDF/Text"}
+            </Button>
+          </div>
+        </div>
+        <Textarea
+          id="agent-knowledge"
+          value={values.knowledgeText}
+          onChange={(event) => updateValue("knowledgeText", event.target.value)}
+          placeholder="Optional uploaded or pasted knowledge for this agent."
+          rows={6}
+          className="mt-1"
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          Supported: PDF, TXT, MD, CSV, JSON. Uploaded text is stored on the agent and used in chat.
+        </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">

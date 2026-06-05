@@ -32,6 +32,9 @@ export default function EditAgentPage() {
   const [showDelete, setShowDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState("");
+  const knowledgeText = agent?.knowledge_text?.trim() || "";
+  const knowledgePreview =
+    knowledgeText.length > 280 ? `${knowledgeText.slice(0, 280).trim()}...` : knowledgeText;
 
   useEffect(() => {
     if (authLoading) return;
@@ -80,6 +83,7 @@ export default function EditAgentPage() {
           role: values.role,
           purpose: values.purpose,
           description: values.purpose,
+          knowledge_text: values.knowledgeText || null,
           language: values.language,
           status: values.status,
           template_type: selectedTemplate?.key || agent.template_type,
@@ -177,11 +181,29 @@ export default function EditAgentPage() {
             {error}
           </div>
         ) : null}
+        <div className="mb-6 rounded-lg border border-border bg-background/60 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Uploaded Knowledge</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {knowledgeText
+                  ? `${knowledgeText.length} characters stored for this agent`
+                  : "No uploaded knowledge stored yet"}
+              </p>
+            </div>
+          </div>
+          {knowledgePreview ? (
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+              {knowledgePreview}
+            </p>
+          ) : null}
+        </div>
         <AgentForm
           initialValues={{
             name: agent.name,
             role: agent.role,
             purpose: agent.description || agent.purpose,
+            knowledgeText: agent.knowledge_text ?? "",
             language: agent.language,
             templateId: agent.template_id ?? "",
             status: agent.status,
