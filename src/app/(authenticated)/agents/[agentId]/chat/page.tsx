@@ -7,10 +7,9 @@ import { toast } from "sonner";
 import {
   deleteBackendAgentResponsePage,
   deleteBackendAgentResponseMessage,
-  fetchBackendAgent,
   fetchBackendAllAgentResponsePages,
   fetchBackendAgentResponseHistory,
-  fetchBackendAgentResponsePages,
+  fetchBackendAgentResponseWorkspace,
   generateBackendAgentResponse,
   isAgentActive,
   updateBackendAgentResponseMessage,
@@ -23,7 +22,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { ChatInterface } from "@/components/ChatInterface";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AUTHENTICATED_HOME } from "@/lib/routes";
+import { AUTHENTICATED_HOME, CHATS_ROUTE } from "@/lib/routes";
 import { getChatErrorMessage, getErrorMessage } from "@/lib/error-message";
 import {
   DropdownMenu,
@@ -217,6 +216,11 @@ function updatePageCollection(
   );
 }
 
+export default function ChatPage() {
+  const params = useParams<{ agentId: string }>();
+  return <AgentChatWorkspace routeAgentId={params.agentId} />;
+}
+
 function sortPagesByRecentActivity(pages: AgentResponsePage[]) {
   return [...pages].sort((left, right) => {
     const leftTimestamp = left.updated_at || left.created_at;
@@ -236,9 +240,14 @@ function updateAgentPagesMap(
   ]);
 }
 
-export default function ChatPage() {
-  const params = useParams<{ agentId: string }>();
-  const agentId = params.agentId;
+type CachedChatState = {
+  messages: Message[];
+  memorySummary: MemorySummary;
+  hasMoreMessages: boolean;
+  totalMessageCount: number;
+};
+
+export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: string | null }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
@@ -257,22 +266,38 @@ export default function ChatPage() {
     title: "",
     description: "",
   });
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [totalMessageCount, setTotalMessageCount] = useState(0);
   const currentChatId = searchParams.get("chatId");
   const activePageIdRef = useRef<string | null>(null);
   const loadedAgentIdRef = useRef<string | null>(null);
+  const chatStateCacheRef = useRef<Record<string, CachedChatState>>({});
   const activePage = pages.find((page) => page.id === activePageId) ?? null;
+  const activeAgentId = agent?.id ?? routeAgentId ?? "";
   const routeAgentName = searchParams.get("name")?.trim() || "";
   const displayAgentName = agent?.name || routeAgentName || "Agent";
   const flatSidebarChats = sortPagesByRecentActivity(
     updateAgentPagesMap(
       sidebarChats,
-      agentId,
+      activeAgentId,
       pages.map((page) => ({
         ...page,
         agent_name: page.agent_name || agent?.name || routeAgentName || null,
       })),
     ),
   ).map((page, index) => ({ page, index }));
+  const buildChatRoute = useCallback(
+    (targetAgentId: string, targetChatId?: string | null) => {
+      if (!routeAgentId) {
+        return targetChatId ? `${CHATS_ROUTE}?chatId=${targetChatId}` : CHATS_ROUTE;
+      }
+
+      return targetChatId
+        ? `/agents/${targetAgentId}/chat?chatId=${targetChatId}`
+        : `/agents/${targetAgentId}/chat`;
+    },
+    [routeAgentId],
+  );
   const derivedActiveTitle = buildTitleFromMessages(messages);
   const activePageTitle =
     memorySummary.title?.trim() && !isWeakChatTitle(memorySummary.title)
@@ -287,12 +312,32 @@ export default function ChatPage() {
     loadedAgentIdRef.current = agent?.id ?? null;
   }, [activePageId, agent?.id]);
 
+  const cacheChatState = useCallback(
+    (
+      chatId: string | null | undefined,
+      nextMessages: Message[],
+      nextMemorySummary: MemorySummary,
+      nextHasMoreMessages = false,
+      nextTotalMessageCount = nextMessages.length,
+    ) => {
+      if (!chatId) return;
+      chatStateCacheRef.current[chatId] = {
+        messages: nextMessages,
+        memorySummary: nextMemorySummary,
+        hasMoreMessages: nextHasMoreMessages,
+        totalMessageCount: nextTotalMessageCount,
+      };
+    },
+    [],
+  );
+
   const loadSidebarChats = useCallback(
     async () => {
       if (!accessToken) return;
 
       const allPages = await fetchBackendAllAgentResponsePages(accessToken, refreshAccessToken);
       setSidebarChats(sortPagesByRecentActivity(allPages));
+      return allPages;
     },
     [accessToken, refreshAccessToken],
   );
@@ -301,10 +346,14 @@ export default function ChatPage() {
     async (selectedAgentId: string, updateUrl = false, selectedPageId?: string | null) => {
       if (!accessToken) return;
 
-      const [agentData, pageList] = await Promise.all([
-        fetchBackendAgent(selectedAgentId, accessToken, refreshAccessToken),
-        fetchBackendAgentResponsePages(selectedAgentId, accessToken, refreshAccessToken),
-      ]);
+      const workspace = await fetchBackendAgentResponseWorkspace(
+        selectedAgentId,
+        selectedPageId || null,
+        accessToken,
+        refreshAccessToken,
+      );
+      const agentData = workspace.agent;
+      const pageList = workspace.pages;
       if (!isAgentActive(agentData)) {
         throw new Error("This agent is inactive and cannot generate responses.");
       }
@@ -314,24 +363,16 @@ export default function ChatPage() {
         setActivePageId(null);
         setMessages([]);
         setMemorySummary({ title: "", description: "" });
+        setHasMoreMessages(false);
+        setTotalMessageCount(0);
 
         if (updateUrl) {
-          router.push(`/agents/${selectedAgentId}/chat`);
+          router.push(buildChatRoute(selectedAgentId));
         }
         return;
       }
 
-      const pageId =
-        selectedPageId && pageList.some((page) => page.id === selectedPageId)
-          ? selectedPageId
-          : pageList[0]?.id || null;
-      const history = await fetchBackendAgentResponseHistory(
-        selectedAgentId,
-        pageId,
-        accessToken,
-        refreshAccessToken,
-      );
-      const nextPageId = history.chat_id || pageId;
+      const nextPageId = workspace.chat_id || pageList[0]?.id || null;
       setAgent(agentData);
       setSidebarChats((current) =>
         updateAgentPagesMap(
@@ -350,25 +391,28 @@ export default function ChatPage() {
         setMemorySummary,
         pageList,
         nextPageId,
-        history.messages,
-        history.memory_summary,
+        workspace.messages,
+        workspace.memory_summary,
+      );
+      setHasMoreMessages(workspace.has_more_messages);
+      setTotalMessageCount(workspace.total_message_count);
+      cacheChatState(
+        nextPageId,
+        workspace.messages,
+        workspace.memory_summary,
+        workspace.has_more_messages,
+        workspace.total_message_count,
       );
 
       if (updateUrl) {
-        router.push(`/agents/${selectedAgentId}/chat?chatId=${nextPageId}`);
+        router.push(buildChatRoute(selectedAgentId, nextPageId));
       }
     },
-    [accessToken, refreshAccessToken, router],
+    [accessToken, buildChatRoute, cacheChatState, refreshAccessToken, router],
   );
 
   useEffect(() => {
     if (authLoading) return;
-
-    if (accessToken) {
-      void loadSidebarChats().catch((err) => {
-        console.error("Failed to load sidebar chats:", err);
-      });
-    }
 
     async function init() {
       if (!accessToken) {
@@ -386,7 +430,25 @@ export default function ChatPage() {
 
       try {
         setError(null);
-        if (loadedAgentIdRef.current === agentId) {
+        const allPages = await loadSidebarChats();
+        const selectedSidebarPage = currentChatId
+          ? allPages?.find((page) => page.id === currentChatId) ?? null
+          : null;
+        const targetAgentId = routeAgentId || selectedSidebarPage?.agent_id || allPages?.[0]?.agent_id;
+        const targetChatId = currentChatId || selectedSidebarPage?.id || allPages?.[0]?.id || null;
+
+        if (!targetAgentId) {
+          setAgent(null);
+          setPages([]);
+          setActivePageId(null);
+          setMessages([]);
+          setMemorySummary({ title: "", description: "" });
+          setHasMoreMessages(false);
+          setTotalMessageCount(0);
+          return;
+        }
+
+        if (loadedAgentIdRef.current === targetAgentId) {
           if (activePageIdRef.current && activePageIdRef.current === currentChatId) {
             setLoading(false);
             setIsSwitchingAgent(false);
@@ -394,7 +456,11 @@ export default function ChatPage() {
           }
         }
 
-        await loadAgentWorkspace(agentId, false, currentChatId);
+        await loadAgentWorkspace(
+          targetAgentId,
+          !routeAgentId && !currentChatId && Boolean(targetChatId),
+          targetChatId,
+        );
       } catch (err) {
         console.error("Failed to load agent response workspace:", err);
         const message = getErrorMessage(err, "Failed to load agent workspace.");
@@ -407,7 +473,14 @@ export default function ChatPage() {
     }
 
     init();
-  }, [accessToken, agentId, authLoading, currentChatId, loadAgentWorkspace, loadSidebarChats]);
+  }, [
+    accessToken,
+    authLoading,
+    currentChatId,
+    loadAgentWorkspace,
+    loadSidebarChats,
+    routeAgentId,
+  ]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -428,6 +501,29 @@ export default function ChatPage() {
       setError(null);
 
       try {
+        const cachedState = chatStateCacheRef.current[pageId];
+        if (cachedState) {
+          const nextPages = mergeActivePageSummary(pages, pageId, cachedState.memorySummary);
+          setPages(nextPages);
+          setSidebarChats((current) =>
+            updateAgentPagesMap(
+              current,
+              agent.id,
+              nextPages.map((page) => ({
+                ...page,
+                agent_name: page.agent_name || agent.name,
+              })),
+            ),
+          );
+          setActivePageId(pageId);
+          setMessages(cachedState.messages);
+          setMemorySummary(cachedState.memorySummary);
+          setHasMoreMessages(cachedState.hasMoreMessages);
+          setTotalMessageCount(cachedState.totalMessageCount);
+          router.replace(buildChatRoute(agent.id, pageId));
+          return;
+        }
+
         const history = await fetchBackendAgentResponseHistory(
           agent.id,
           pageId,
@@ -450,7 +546,16 @@ export default function ChatPage() {
         setActivePageId(nextPageId);
         setMessages(history.messages);
         setMemorySummary(history.memory_summary);
-        router.replace(`/agents/${agent.id}/chat?chatId=${nextPageId}`);
+        setHasMoreMessages(history.has_more_messages);
+        setTotalMessageCount(history.total_message_count);
+        cacheChatState(
+          nextPageId,
+          history.messages,
+          history.memory_summary,
+          history.has_more_messages,
+          history.total_message_count,
+        );
+        router.replace(buildChatRoute(agent.id, nextPageId));
       } catch (err) {
         console.error("Failed to switch response page:", err);
         const message = getErrorMessage(err, "Failed to switch chat.");
@@ -460,7 +565,7 @@ export default function ChatPage() {
         setIsSwitchingAgent(false);
       }
     },
-    [accessToken, activePageId, agent, pages, refreshAccessToken, router],
+    [accessToken, activePageId, agent, buildChatRoute, cacheChatState, pages, refreshAccessToken, router],
   );
 
   const handleSend = useCallback(
@@ -526,7 +631,10 @@ export default function ChatPage() {
           nextMessages,
           nextMemorySummary,
         );
-        router.replace(`/agents/${agent.id}/chat?chatId=${nextPageId}`);
+        setHasMoreMessages(false);
+        setTotalMessageCount(nextMessages.length);
+        cacheChatState(nextPageId, nextMessages, nextMemorySummary, false, nextMessages.length);
+        router.replace(buildChatRoute(agent.id, nextPageId));
       } catch (err) {
         console.error("Failed to generate agent response:", err);
         setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id));
@@ -537,7 +645,7 @@ export default function ChatPage() {
         setIsGenerating(false);
       }
     },
-    [accessToken, activePageId, agent, pages, refreshAccessToken, router],
+    [accessToken, activePageId, agent, buildChatRoute, pages, refreshAccessToken, router],
   );
 
   const handleDeleteMessage = useCallback(
@@ -580,8 +688,17 @@ export default function ChatPage() {
           history.messages,
           history.memory_summary,
         );
+        setHasMoreMessages(history.has_more_messages);
+        setTotalMessageCount(history.total_message_count);
+        cacheChatState(
+          history.chat_id,
+          history.messages,
+          history.memory_summary,
+          history.has_more_messages,
+          history.total_message_count,
+        );
         if (history.chat_id) {
-          router.replace(`/agents/${agent.id}/chat?chatId=${history.chat_id}`);
+          router.replace(buildChatRoute(agent.id, history.chat_id));
         }
       } catch (err) {
         console.error("Failed to delete agent response message:", err);
@@ -592,7 +709,7 @@ export default function ChatPage() {
         setMessageActionId(null);
       }
     },
-    [accessToken, agent, pages, refreshAccessToken, router],
+    [accessToken, agent, buildChatRoute, cacheChatState, pages, refreshAccessToken, router],
   );
 
   const handleEditMessage = useCallback(
@@ -636,8 +753,17 @@ export default function ChatPage() {
           history.messages,
           history.memory_summary,
         );
+        setHasMoreMessages(history.has_more_messages);
+        setTotalMessageCount(history.total_message_count);
+        cacheChatState(
+          history.chat_id,
+          history.messages,
+          history.memory_summary,
+          history.has_more_messages,
+          history.total_message_count,
+        );
         if (history.chat_id) {
-          router.replace(`/agents/${agent.id}/chat?chatId=${history.chat_id}`);
+          router.replace(buildChatRoute(agent.id, history.chat_id));
         }
       } catch (err) {
         console.error("Failed to edit agent response message:", err);
@@ -648,7 +774,7 @@ export default function ChatPage() {
         setMessageActionId(null);
       }
     },
-    [accessToken, agent, pages, refreshAccessToken, router],
+    [accessToken, agent, buildChatRoute, cacheChatState, pages, refreshAccessToken, router],
   );
 
   const handleDeletePage = useCallback(
@@ -660,6 +786,7 @@ export default function ChatPage() {
 
       try {
         await deleteBackendAgentResponsePage(agent.id, pageId, accessToken, refreshAccessToken);
+        delete chatStateCacheRef.current[pageId];
 
         const remainingPages = pages.filter((page) => page.id !== pageId);
         setSidebarChats((current) =>
@@ -679,7 +806,9 @@ export default function ChatPage() {
           setActivePageId(null);
           setMessages([]);
           setMemorySummary({ title: "", description: "" });
-          router.replace(`/agents/${agent.id}/chat`);
+          setHasMoreMessages(false);
+          setTotalMessageCount(0);
+          router.replace(buildChatRoute(agent.id));
           return;
         }
 
@@ -706,10 +835,19 @@ export default function ChatPage() {
             history.messages,
             history.memory_summary,
           );
-          router.replace(`/agents/${agent.id}/chat?chatId=${resolvedPageId}`);
+          setHasMoreMessages(history.has_more_messages);
+          setTotalMessageCount(history.total_message_count);
+          cacheChatState(
+            resolvedPageId,
+            history.messages,
+            history.memory_summary,
+            history.has_more_messages,
+            history.total_message_count,
+          );
+          router.replace(buildChatRoute(agent.id, resolvedPageId));
         } else {
           setPages(remainingPages);
-          router.replace(`/agents/${agent.id}/chat`);
+          router.replace(buildChatRoute(agent.id));
         }
       } catch (err) {
         console.error("Failed to delete response page:", err);
@@ -720,27 +858,24 @@ export default function ChatPage() {
         setPageActionId(null);
       }
     },
-    [accessToken, activePageId, agent, pages, refreshAccessToken, router],
+    [accessToken, activePageId, agent, buildChatRoute, cacheChatState, pages, refreshAccessToken, router],
   );
 
   const openAgentWorkspace = useCallback(
     (targetAgentId: string, targetChatId?: string | null) => {
-      if (targetAgentId === agentId) {
+      if (targetAgentId === activeAgentId) {
         if (targetChatId) {
           void selectPage(targetChatId);
         } else {
-          router.push(`/agents/${targetAgentId}/chat`);
+          router.push(buildChatRoute(targetAgentId));
         }
         return;
       }
 
       setIsSwitchingAgent(true);
-      const nextUrl = targetChatId
-        ? `/agents/${targetAgentId}/chat?chatId=${targetChatId}`
-        : `/agents/${targetAgentId}/chat`;
-      router.push(nextUrl);
+      router.push(buildChatRoute(targetAgentId, targetChatId));
     },
-    [agentId, router, selectPage],
+    [activeAgentId, buildChatRoute, router, selectPage],
   );
 
   if (!loading && !agent) {
@@ -775,7 +910,7 @@ export default function ChatPage() {
           ) : (
             <div className="space-y-2">
               {flatSidebarChats.map(({ page, index }) => {
-                const isActiveChat = page.agent_id === agentId && page.id === activePageId;
+                const isActiveChat = page.agent_id === activeAgentId && page.id === activePageId;
                 return (
                   <div
                     key={page.id}
@@ -789,7 +924,7 @@ export default function ChatPage() {
                       type="button"
                       className="flex min-w-0 flex-1 items-start gap-3 text-left"
                       onClick={() => {
-                        if (page.agent_id === agentId) {
+                        if (page.agent_id === activeAgentId) {
                           void selectPage(page.id);
                           return;
                         }
@@ -821,7 +956,7 @@ export default function ChatPage() {
                       </div>
                     </button>
 
-                    {page.agent_id === agentId ? (
+                    {page.agent_id === activeAgentId ? (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
@@ -876,6 +1011,8 @@ export default function ChatPage() {
             streamingContent=""
             error={error}
             messageActionId={messageActionId}
+            hasMoreMessages={hasMoreMessages}
+            totalMessageCount={totalMessageCount}
           />
         )}
       </main>

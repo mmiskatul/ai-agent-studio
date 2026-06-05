@@ -104,6 +104,16 @@ export interface AgentResponseGenerateResult {
   local_fallback?: boolean;
 }
 
+export interface AgentResponseWorkspace {
+  agent: Agent;
+  chat_id: string | null;
+  memory_summary: MemorySummary;
+  messages: Message[];
+  total_message_count: number;
+  has_more_messages: boolean;
+  pages: AgentResponsePage[];
+}
+
 const AGENTS_STORAGE_KEY = "agenthub.agents";
 const CHATS_STORAGE_KEY = "agenthub.chats";
 const MESSAGES_STORAGE_KEY = "agenthub.messages";
@@ -250,12 +260,16 @@ function normalizeBackendAgentResponseHistory(body: unknown) {
     chat_id: string | null;
     memory_summary: unknown;
     messages: Message[];
+    total_message_count?: number;
+    has_more_messages?: boolean;
   };
 
   return {
     ...parsedBody,
     memory_summary: normalizeMemorySummary(parsedBody.memory_summary),
     messages: parsedBody.messages.map(normalizeMessage),
+    total_message_count: parsedBody.total_message_count ?? parsedBody.messages.length,
+    has_more_messages: Boolean(parsedBody.has_more_messages),
   };
 }
 
@@ -494,6 +508,60 @@ export async function fetchBackendAgentResponseHistory(
 ) {
   return withBackendAuthRetry(
     (token) => fetchBackendAgentResponseHistoryRequest(agentId, chatId, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function fetchBackendAgentResponseWorkspaceRequest(
+  agentId: string,
+  chatId: string | null,
+  accessToken: string,
+) {
+  const params = new URLSearchParams();
+  if (chatId) {
+    params.set("chat_id", chatId);
+  }
+
+  const query = params.toString();
+  const response = await fetch(
+    `/backend/api/v1/agents/${agentId}/response/workspace${query ? `?${query}` : ""}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(body, "Failed to load chat workspace"));
+  }
+
+  const parsedBody = body as AgentResponseWorkspace;
+  return {
+    agent: normalizeAgent(parsedBody.agent),
+    chat_id: parsedBody.chat_id,
+    memory_summary: normalizeMemorySummary(parsedBody.memory_summary),
+    messages: (parsedBody.messages || []).map(normalizeMessage),
+    total_message_count: parsedBody.total_message_count ?? (parsedBody.messages || []).length,
+    has_more_messages: Boolean(parsedBody.has_more_messages),
+    pages: (parsedBody.pages || []).map((page) => ({
+      ...page,
+      memory_summary: normalizeMemorySummary(page.memory_summary),
+    })),
+  } satisfies AgentResponseWorkspace;
+}
+
+export async function fetchBackendAgentResponseWorkspace(
+  agentId: string,
+  chatId: string | null,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    (token) => fetchBackendAgentResponseWorkspaceRequest(agentId, chatId, token),
     accessToken,
     refreshAccessToken,
   );

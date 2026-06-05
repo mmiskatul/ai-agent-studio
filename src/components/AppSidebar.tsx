@@ -3,10 +3,19 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo } from "react";
-import { Bot, CircleUserRound, Compass, LayoutDashboard, LogOut, Phone, Users } from "lucide-react";
+import {
+  Bot,
+  CircleUserRound,
+  Compass,
+  LayoutDashboard,
+  LogOut,
+  MessageSquare,
+  Phone,
+  Users,
+} from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { SIGN_IN_ROUTE } from "@/lib/routes";
+import { CHATS_ROUTE, SIGN_IN_ROUTE } from "@/lib/routes";
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -16,6 +25,7 @@ export function AppSidebar() {
   const navItems = useMemo(
     () => [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      { label: "Chats", href: CHATS_ROUTE, icon: MessageSquare },
       { label: "Explore Agents", href: "/explore-agents", icon: Compass },
       { label: "Agents", href: "/agents", icon: Users },
       { label: "Leads", href: "/leads", icon: Phone },

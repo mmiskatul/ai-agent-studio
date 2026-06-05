@@ -17,6 +17,8 @@ interface ChatInterfaceProps {
   onEditMessage?: (messageId: string, content: string) => void;
   messageActionId?: string | null;
   isLoadingHistory?: boolean;
+  hasMoreMessages?: boolean;
+  totalMessageCount?: number;
 }
 
 const markdownComponents = {
@@ -122,6 +124,8 @@ export function ChatInterface({
   onEditMessage,
   messageActionId,
   isLoadingHistory = false,
+  hasMoreMessages = false,
+  totalMessageCount = 0,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -196,6 +200,14 @@ export function ChatInterface({
             <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               Loading chat
+            </div>
+          </div>
+        )}
+
+        {hasMoreMessages && (
+          <div className="mb-4 flex justify-center">
+            <div className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm">
+              Showing recent messages only ({messages.length} of {totalMessageCount})
             </div>
           </div>
         )}
