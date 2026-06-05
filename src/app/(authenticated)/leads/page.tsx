@@ -21,11 +21,11 @@ import {
 
 export default function LeadsPage() {
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
-  const cachedAgents = peekSessionCache<Agent[]>(BACKEND_AGENTS_CACHE_KEY);
-  const cachedLeads = peekSessionCache<Lead[]>(LEADS_CACHE_KEY);
+  const cachedAgents = peekSessionCache<Agent[]>(BACKEND_AGENTS_CACHE_KEY, { allowExpired: true });
+  const cachedLeads = peekSessionCache<Lead[]>(LEADS_CACHE_KEY, { allowExpired: true });
   const [agents, setAgents] = useState<Agent[]>(cachedAgents ?? []);
   const [leads, setLeads] = useState<Lead[]>(cachedLeads ?? []);
-  const [loading, setLoading] = useState(!(cachedAgents && cachedLeads));
+  const [loading, setLoading] = useState(!(cachedAgents || cachedLeads));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({

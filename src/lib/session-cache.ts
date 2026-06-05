@@ -10,7 +10,7 @@ function getStorageKey(key: string) {
   return `${CACHE_PREFIX}${key}`;
 }
 
-function readStorageRecord<T>(key: string) {
+function readStorageRecord<T>(key: string, allowExpired = false) {
   if (!canUseSessionStorage()) return null;
 
   try {
@@ -23,7 +23,7 @@ function readStorageRecord<T>(key: string) {
       return null;
     }
 
-    if (Date.now() >= parsed.expiresAt) {
+    if (!allowExpired && Date.now() >= parsed.expiresAt) {
       window.sessionStorage.removeItem(getStorageKey(key));
       return null;
     }
@@ -98,13 +98,14 @@ export async function getOrFetchSessionCached<T>(
   return request;
 }
 
-export function peekSessionCache<T>(key: string) {
+export function peekSessionCache<T>(key: string, options?: { allowExpired?: boolean }) {
+  const allowExpired = options?.allowExpired ?? false;
   const memoryRecord = memoryCache.get(key);
-  if (memoryRecord && Date.now() < memoryRecord.expiresAt) {
+  if (memoryRecord && (allowExpired || Date.now() < memoryRecord.expiresAt)) {
     return memoryRecord.value as T;
   }
 
-  const storageRecord = readStorageRecord<T>(key);
+  const storageRecord = readStorageRecord<T>(key, allowExpired);
   if (!storageRecord) {
     return null;
   }

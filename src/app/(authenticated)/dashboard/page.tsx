@@ -85,7 +85,9 @@ function DashboardSkeleton() {
 
 export default function DashboardPage() {
   const { accessToken, refreshAccessToken } = useAuth();
-  const cachedDashboard = peekSessionCache<DashboardOverview>(DASHBOARD_OVERVIEW_CACHE_KEY);
+  const cachedDashboard = peekSessionCache<DashboardOverview>(DASHBOARD_OVERVIEW_CACHE_KEY, {
+    allowExpired: true,
+  });
   const [dashboard, setDashboard] = useState<DashboardOverview>(cachedDashboard ?? emptyDashboard);
   const [loading, setLoading] = useState(!cachedDashboard);
   const [error, setError] = useState<string | null>(null);

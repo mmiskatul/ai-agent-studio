@@ -38,7 +38,9 @@ function formatDate(value?: string) {
 
 export default function ProfilePage() {
   const { user, accessToken, sessionToken, refreshAccessToken, signOut } = useAuth();
-  const cachedProfile = peekSessionCache<ProfileResponse>(PROFILE_CACHE_KEY);
+  const cachedProfile = peekSessionCache<ProfileResponse>(PROFILE_CACHE_KEY, {
+    allowExpired: true,
+  });
   const [profile, setProfile] = useState<ProfileResponse | null>(cachedProfile);
   const [displayNameInput, setDisplayNameInput] = useState("");
   const [profileImageInput, setProfileImageInput] = useState<string | null>(null);
