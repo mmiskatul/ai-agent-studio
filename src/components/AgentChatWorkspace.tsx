@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AUTHENTICATED_HOME, CHATS_ROUTE } from "@/lib/routes";
 import { getChatErrorMessage, getErrorMessage } from "@/lib/error-message";
-import { peekSessionCache } from "@/lib/session-cache";
+import { peekSessionCache, primeSessionCache } from "@/lib/session-cache";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -244,30 +244,93 @@ type CachedChatState = {
   totalMessageCount: number;
 };
 
+type CachedWorkspaceSnapshot = {
+  agent: Agent;
+  pages: AgentResponsePage[];
+  activePageId: string | null;
+  messages: Message[];
+  memorySummary: MemorySummary;
+  hasMoreMessages: boolean;
+  totalMessageCount: number;
+};
+
+const WORKSPACE_SNAPSHOT_TTL_MS = 20_000;
+
+function getWorkspaceSnapshotCacheKey(agentId: string, chatId: string | null) {
+  return `chat-workspace:${agentId}:${chatId || "latest"}`;
+}
+
+function primeWorkspaceSnapshot(
+  agent: Agent,
+  pages: AgentResponsePage[],
+  activePageId: string | null,
+  messages: Message[],
+  memorySummary: MemorySummary,
+  hasMoreMessages: boolean,
+  totalMessageCount: number,
+) {
+  primeSessionCache(
+    getWorkspaceSnapshotCacheKey(agent.id, activePageId),
+    {
+      agent,
+      pages,
+      activePageId,
+      messages,
+      memorySummary,
+      hasMoreMessages,
+      totalMessageCount,
+    } satisfies CachedWorkspaceSnapshot,
+    WORKSPACE_SNAPSHOT_TTL_MS,
+  );
+}
+
 export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: string | null }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
+  const currentChatId = searchParams.get("chatId");
+  const queryAgentId = searchParams.get("agentId");
   const cachedSidebarChats = peekSessionCache<AgentResponsePage[]>("backend-all-agent-response-pages");
-  const [agent, setAgent] = useState<Agent | null>(null);
-  const [pages, setPages] = useState<AgentResponsePage[]>([]);
+  const initialSidebarPage = currentChatId
+    ? cachedSidebarChats?.find((page) => page.id === currentChatId) ?? null
+    : null;
+  const initialTargetAgentId =
+    routeAgentId ||
+    queryAgentId ||
+    initialSidebarPage?.agent_id ||
+    cachedSidebarChats?.[0]?.agent_id ||
+    null;
+  const initialTargetChatId = currentChatId || initialSidebarPage?.id || cachedSidebarChats?.[0]?.id || null;
+  const cachedWorkspaceSnapshot = initialTargetAgentId
+    ? peekSessionCache<CachedWorkspaceSnapshot>(
+        getWorkspaceSnapshotCacheKey(initialTargetAgentId, initialTargetChatId),
+      )
+    : null;
+  const [agent, setAgent] = useState<Agent | null>(cachedWorkspaceSnapshot?.agent ?? null);
+  const [pages, setPages] = useState<AgentResponsePage[]>(cachedWorkspaceSnapshot?.pages ?? []);
   const [sidebarChats, setSidebarChats] = useState<AgentResponsePage[]>(cachedSidebarChats ?? []);
-  const [activePageId, setActivePageId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [activePageId, setActivePageId] = useState<string | null>(
+    cachedWorkspaceSnapshot?.activePageId ?? null,
+  );
+  const [messages, setMessages] = useState<Message[]>(cachedWorkspaceSnapshot?.messages ?? []);
+  const [loading, setLoading] = useState(!cachedWorkspaceSnapshot);
   const [isSwitchingAgent, setIsSwitchingAgent] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [messageActionId, setMessageActionId] = useState<string | null>(null);
   const [pageActionId, setPageActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [memorySummary, setMemorySummary] = useState<MemorySummary>({
-    title: "",
-    description: "",
-  });
-  const [hasMoreMessages, setHasMoreMessages] = useState(false);
-  const [totalMessageCount, setTotalMessageCount] = useState(0);
-  const currentChatId = searchParams.get("chatId");
-  const queryAgentId = searchParams.get("agentId");
+  const [memorySummary, setMemorySummary] = useState<MemorySummary>(
+    cachedWorkspaceSnapshot?.memorySummary ?? {
+      title: "",
+      description: "",
+    },
+  );
+  const [hasMoreMessages, setHasMoreMessages] = useState(
+    cachedWorkspaceSnapshot?.hasMoreMessages ?? false,
+  );
+  const [totalMessageCount, setTotalMessageCount] = useState(
+    cachedWorkspaceSnapshot?.totalMessageCount ?? 0,
+  );
   const activePageIdRef = useRef<string | null>(null);
   const loadedAgentIdRef = useRef<string | null>(null);
   const chatStateCacheRef = useRef<Record<string, CachedChatState>>({});
@@ -402,6 +465,15 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
         workspace.has_more_messages,
         workspace.total_message_count,
       );
+      primeWorkspaceSnapshot(
+        agentData,
+        pageList,
+        nextPageId,
+        workspace.messages,
+        workspace.memory_summary,
+        workspace.has_more_messages,
+        workspace.total_message_count,
+      );
 
       if (updateUrl) {
         router.push(buildChatRoute(selectedAgentId, nextPageId));
@@ -422,7 +494,9 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
 
       const isInitialLoad = loadedAgentIdRef.current === null;
       if (isInitialLoad) {
-        setLoading(true);
+        if (!cachedWorkspaceSnapshot) {
+          setLoading(true);
+        }
       } else {
         setIsSwitchingAgent(true);
       }
@@ -446,6 +520,37 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
           setHasMoreMessages(false);
           setTotalMessageCount(0);
           return;
+        }
+
+        const resolvedWorkspaceSnapshot = peekSessionCache<CachedWorkspaceSnapshot>(
+          getWorkspaceSnapshotCacheKey(targetAgentId, targetChatId),
+        );
+        if (resolvedWorkspaceSnapshot) {
+          setAgent(resolvedWorkspaceSnapshot.agent);
+          setPages(resolvedWorkspaceSnapshot.pages);
+          setSidebarChats((current) =>
+            updateAgentPagesMap(
+              current,
+              targetAgentId,
+              resolvedWorkspaceSnapshot.pages.map((page) => ({
+                ...page,
+                agent_name: page.agent_name || resolvedWorkspaceSnapshot.agent.name,
+              })),
+            ),
+          );
+          setActivePageId(resolvedWorkspaceSnapshot.activePageId);
+          setMessages(resolvedWorkspaceSnapshot.messages);
+          setMemorySummary(resolvedWorkspaceSnapshot.memorySummary);
+          setHasMoreMessages(resolvedWorkspaceSnapshot.hasMoreMessages);
+          setTotalMessageCount(resolvedWorkspaceSnapshot.totalMessageCount);
+          cacheChatState(
+            resolvedWorkspaceSnapshot.activePageId,
+            resolvedWorkspaceSnapshot.messages,
+            resolvedWorkspaceSnapshot.memorySummary,
+            resolvedWorkspaceSnapshot.hasMoreMessages,
+            resolvedWorkspaceSnapshot.totalMessageCount,
+          );
+          setLoading(false);
         }
 
         if (loadedAgentIdRef.current === targetAgentId) {
@@ -477,6 +582,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
     accessToken,
     authLoading,
     currentChatId,
+    cachedWorkspaceSnapshot,
     loadAgentWorkspace,
     loadSidebarChats,
     queryAgentId,
@@ -521,6 +627,15 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
           setMemorySummary(cachedState.memorySummary);
           setHasMoreMessages(cachedState.hasMoreMessages);
           setTotalMessageCount(cachedState.totalMessageCount);
+          primeWorkspaceSnapshot(
+            agent,
+            nextPages,
+            pageId,
+            cachedState.messages,
+            cachedState.memorySummary,
+            cachedState.hasMoreMessages,
+            cachedState.totalMessageCount,
+          );
           router.replace(buildChatRoute(agent.id, pageId));
           return;
         }
@@ -550,6 +665,15 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
         setHasMoreMessages(history.has_more_messages);
         setTotalMessageCount(history.total_message_count);
         cacheChatState(
+          nextPageId,
+          history.messages,
+          history.memory_summary,
+          history.has_more_messages,
+          history.total_message_count,
+        );
+        primeWorkspaceSnapshot(
+          agent,
+          nextPages,
           nextPageId,
           history.messages,
           history.memory_summary,
@@ -643,6 +767,15 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
         setHasMoreMessages(false);
         setTotalMessageCount(nextMessages.length);
         cacheChatState(nextPageId, nextMessages, nextMemorySummary, false, nextMessages.length);
+        primeWorkspaceSnapshot(
+          agent,
+          nextPages,
+          nextPageId,
+          nextMessages,
+          nextMemorySummary,
+          false,
+          nextMessages.length,
+        );
         router.replace(buildChatRoute(agent.id, nextPageId));
       } catch (err) {
         console.error("Failed to generate agent response:", err);
@@ -700,6 +833,15 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
         setHasMoreMessages(history.has_more_messages);
         setTotalMessageCount(history.total_message_count);
         cacheChatState(
+          history.chat_id,
+          history.messages,
+          history.memory_summary,
+          history.has_more_messages,
+          history.total_message_count,
+        );
+        primeWorkspaceSnapshot(
+          agent,
+          nextPages,
           history.chat_id,
           history.messages,
           history.memory_summary,
@@ -771,6 +913,15 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
           history.has_more_messages,
           history.total_message_count,
         );
+        primeWorkspaceSnapshot(
+          agent,
+          nextPages,
+          history.chat_id,
+          history.messages,
+          history.memory_summary,
+          history.has_more_messages,
+          history.total_message_count,
+        );
         if (history.chat_id) {
           router.replace(buildChatRoute(agent.id, history.chat_id));
         }
@@ -823,6 +974,15 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
 
         if (pageId !== activePageId) {
           setPages(remainingPages);
+          primeWorkspaceSnapshot(
+            agent,
+            remainingPages,
+            activePageId,
+            messages,
+            memorySummary,
+            hasMoreMessages,
+            totalMessageCount,
+          );
           return;
         }
 
@@ -853,6 +1013,15 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
             history.has_more_messages,
             history.total_message_count,
           );
+          primeWorkspaceSnapshot(
+            agent,
+            remainingPages,
+            resolvedPageId,
+            history.messages,
+            history.memory_summary,
+            history.has_more_messages,
+            history.total_message_count,
+          );
           router.replace(buildChatRoute(agent.id, resolvedPageId));
         } else {
           setPages(remainingPages);
@@ -867,7 +1036,20 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
         setPageActionId(null);
       }
     },
-    [accessToken, activePageId, agent, buildChatRoute, cacheChatState, pages, refreshAccessToken, router],
+    [
+      accessToken,
+      activePageId,
+      agent,
+      buildChatRoute,
+      cacheChatState,
+      hasMoreMessages,
+      memorySummary,
+      messages,
+      pages,
+      refreshAccessToken,
+      router,
+      totalMessageCount,
+    ],
   );
 
   const openAgentWorkspace = useCallback(
