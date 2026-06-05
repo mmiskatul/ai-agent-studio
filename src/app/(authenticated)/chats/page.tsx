@@ -1,6 +1,6 @@
 "use client";
 
-import { AgentChatWorkspace } from "@/app/(authenticated)/agents/[agentId]/chat/page";
+import { AgentChatWorkspace } from "@/components/AgentChatWorkspace";
 
 export default function ChatsPage() {
   return <AgentChatWorkspace />;

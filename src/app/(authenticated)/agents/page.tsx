@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bot, Check, Filter, MessageSquare, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
+  BACKEND_AGENTS_CACHE_KEY,
   deleteBackendAgent,
   fetchBackendAgent,
   fetchBackendAgents,
@@ -15,6 +16,7 @@ import {
 } from "@/lib/agent-api";
 import { getErrorMessage } from "@/lib/error-message";
 import { useAuth } from "@/hooks/use-auth";
+import { peekSessionCache } from "@/lib/session-cache";
 import { AgentForm, type AgentFormValues } from "@/components/AgentForm";
 import { DeleteConfirmModal } from "@/components/DeleteConfirmModal";
 import { Button } from "@/components/ui/button";
@@ -44,13 +46,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { fetchTemplates, type AgentTemplate } from "@/lib/template-api";
+import { fetchTemplates, TEMPLATE_CACHE_KEY, type AgentTemplate } from "@/lib/template-api";
 import { buildStandardSystemPrompt } from "@/lib/standard-agent-prompt";
+import { CHATS_ROUTE } from "@/lib/routes";
 
 export default function AgentsPage() {
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedAgents = peekSessionCache<Agent[]>(BACKEND_AGENTS_CACHE_KEY);
+  const cachedTemplates = peekSessionCache<AgentTemplate[]>(TEMPLATE_CACHE_KEY);
+  const [agents, setAgents] = useState<Agent[]>(cachedAgents ?? []);
+  const [loading, setLoading] = useState(!cachedAgents);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -62,7 +67,7 @@ export default function AgentsPage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [editError, setEditError] = useState("");
-  const [templates, setTemplates] = useState<AgentTemplate[]>([]);
+  const [templates, setTemplates] = useState<AgentTemplate[]>(cachedTemplates ?? []);
 
   const loadAgents = useCallback(async () => {
     if (!accessToken) {
@@ -434,7 +439,7 @@ export default function AgentsPage() {
                       </Button>
                       {isAgentActive(agent) ? (
                         <Link
-                          href={`/agents/${agent.id}/chat?name=${encodeURIComponent(agent.name)}`}
+                          href={`${CHATS_ROUTE}?agentId=${agent.id}&name=${encodeURIComponent(agent.name)}`}
                         >
                           <Button size="sm" className="gap-1.5">
                             <MessageSquare className="h-3.5 w-3.5" />

@@ -1,4 +1,6 @@
 import { getApiErrorMessage, getApiSuccessData } from "@/lib/error-message";
+import { DASHBOARD_OVERVIEW_CACHE_KEY } from "@/lib/dashboard-api";
+import { getOrFetchSessionCached, invalidateSessionCache } from "@/lib/session-cache";
 
 export interface Agent {
   id: string;
@@ -125,6 +127,26 @@ export interface AgentResponseWorkspace {
 const AGENTS_STORAGE_KEY = "agenthub.agents";
 const CHATS_STORAGE_KEY = "agenthub.chats";
 const MESSAGES_STORAGE_KEY = "agenthub.messages";
+export const BACKEND_AGENTS_CACHE_KEY = "backend-agents";
+export const BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY = "backend-all-agent-response-pages";
+const BACKEND_AGENTS_CACHE_TTL_MS = 45_000;
+const BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_TTL_MS = 20_000;
+
+function backendAgentCacheKey(agentId: string) {
+  return `backend-agent:${agentId}`;
+}
+
+function invalidateBackendAgentCaches(agentId?: string) {
+  const keys = [
+    BACKEND_AGENTS_CACHE_KEY,
+    BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
+    DASHBOARD_OVERVIEW_CACHE_KEY,
+  ];
+  if (agentId) {
+    keys.push(backendAgentCacheKey(agentId));
+  }
+  invalidateSessionCache(keys);
+}
 
 function requireBrowserStorage() {
   if (typeof window === "undefined") {
@@ -365,7 +387,9 @@ export async function fetchBackendAgents(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withBackendAuthRetry(fetchBackendAgentsRequest, accessToken, refreshAccessToken);
+  return getOrFetchSessionCached(BACKEND_AGENTS_CACHE_KEY, BACKEND_AGENTS_CACHE_TTL_MS, () =>
+    withBackendAuthRetry(fetchBackendAgentsRequest, accessToken, refreshAccessToken),
+  );
 }
 
 async function uploadAgentKnowledgeFileRequest(file: File, accessToken: string) {
@@ -425,11 +449,13 @@ export async function createBackendAgent(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withBackendAuthRetry(
+  const createdAgent = await withBackendAuthRetry(
     (token) => createBackendAgentRequest(agent, token),
     accessToken,
     refreshAccessToken,
   );
+  invalidateBackendAgentCaches();
+  return createdAgent;
 }
 
 async function fetchBackendAgentRequest(agentId: string, accessToken: string) {
@@ -453,10 +479,15 @@ export async function fetchBackendAgent(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withBackendAuthRetry(
-    (token) => fetchBackendAgentRequest(agentId, token),
-    accessToken,
-    refreshAccessToken,
+  return getOrFetchSessionCached(
+    backendAgentCacheKey(agentId),
+    BACKEND_AGENTS_CACHE_TTL_MS,
+    () =>
+      withBackendAuthRetry(
+        (token) => fetchBackendAgentRequest(agentId, token),
+        accessToken,
+        refreshAccessToken,
+      ),
   );
 }
 
@@ -512,7 +543,7 @@ export async function generateBackendAgentResponse(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withBackendAuthRetry(
+  const generatedResponse = await withBackendAuthRetry(
     (token) =>
       generateBackendAgentResponseRequest(
         agentId,
@@ -525,6 +556,11 @@ export async function generateBackendAgentResponse(
     accessToken,
     refreshAccessToken,
   );
+  invalidateSessionCache([
+    BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
+    DASHBOARD_OVERVIEW_CACHE_KEY,
+  ]);
+  return generatedResponse;
 }
 
 async function fetchBackendAgentResponseHistoryRequest(
@@ -676,10 +712,15 @@ export async function fetchBackendAllAgentResponsePages(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withBackendAuthRetry(
-    fetchBackendAllAgentResponsePagesRequest,
-    accessToken,
-    refreshAccessToken,
+  return getOrFetchSessionCached(
+    BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
+    BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_TTL_MS,
+    () =>
+      withBackendAuthRetry(
+        fetchBackendAllAgentResponsePagesRequest,
+        accessToken,
+        refreshAccessToken,
+      ),
   );
 }
 
@@ -715,11 +756,16 @@ export async function createBackendAgentResponsePage(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withBackendAuthRetry(
+  const createdPage = await withBackendAuthRetry(
     (token) => createBackendAgentResponsePageRequest(agentId, title, token),
     accessToken,
     refreshAccessToken,
   );
+  invalidateSessionCache([
+    BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
+    DASHBOARD_OVERVIEW_CACHE_KEY,
+  ]);
+  return createdPage;
 }
 
 async function deleteBackendAgentResponsePageRequest(
@@ -746,11 +792,15 @@ export async function deleteBackendAgentResponsePage(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withBackendAuthRetry(
+  await withBackendAuthRetry(
     (token) => deleteBackendAgentResponsePageRequest(agentId, chatId, token),
     accessToken,
     refreshAccessToken,
   );
+  invalidateSessionCache([
+    BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
+    DASHBOARD_OVERVIEW_CACHE_KEY,
+  ]);
 }
 
 async function fetchLatestBackendAgentResponseHistoryRequest(accessToken: string) {
@@ -811,11 +861,16 @@ export async function updateBackendAgentResponseMessage(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withBackendAuthRetry(
+  const updatedHistory = await withBackendAuthRetry(
     (token) => updateBackendAgentResponseMessageRequest(agentId, messageId, content, token),
     accessToken,
     refreshAccessToken,
   );
+  invalidateSessionCache([
+    BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
+    DASHBOARD_OVERVIEW_CACHE_KEY,
+  ]);
+  return updatedHistory;
 }
 
 async function deleteBackendAgentResponseMessageRequest(
@@ -845,11 +900,16 @@ export async function deleteBackendAgentResponseMessage(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withBackendAuthRetry(
+  const updatedHistory = await withBackendAuthRetry(
     (token) => deleteBackendAgentResponseMessageRequest(agentId, messageId, token),
     accessToken,
     refreshAccessToken,
   );
+  invalidateSessionCache([
+    BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
+    DASHBOARD_OVERVIEW_CACHE_KEY,
+  ]);
+  return updatedHistory;
 }
 
 async function updateBackendAgentRequest(
@@ -881,11 +941,13 @@ export async function updateBackendAgent(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withBackendAuthRetry(
+  const updatedAgent = await withBackendAuthRetry(
     (token) => updateBackendAgentRequest(agentId, updates, token),
     accessToken,
     refreshAccessToken,
   );
+  invalidateBackendAgentCaches(agentId);
+  return updatedAgent;
 }
 
 async function deleteBackendAgentRequest(agentId: string, accessToken: string) {
@@ -907,11 +969,12 @@ export async function deleteBackendAgent(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withBackendAuthRetry(
+  await withBackendAuthRetry(
     (token) => deleteBackendAgentRequest(agentId, token),
     accessToken,
     refreshAccessToken,
   );
+  invalidateBackendAgentCaches(agentId);
 }
 
 async function fetchBackendChatsRequest(agentId: string, accessToken: string) {

@@ -9,17 +9,19 @@ import { useAuth } from "@/hooks/use-auth";
 import { createBackendAgent } from "@/lib/agent-api";
 import { getErrorMessage } from "@/lib/error-message";
 import { AUTHENTICATED_HOME } from "@/lib/routes";
+import { peekSessionCache } from "@/lib/session-cache";
 import { buildStandardSystemPrompt } from "@/lib/standard-agent-prompt";
-import { fetchTemplates, type AgentTemplate } from "@/lib/template-api";
+import { fetchTemplates, TEMPLATE_CACHE_KEY, type AgentTemplate } from "@/lib/template-api";
 
 const NEW_AGENT_DRAFT_KEY = "agenthub.new-agent-draft";
 
 export default function NewAgentPage() {
   const router = useRouter();
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
-  const [templates, setTemplates] = useState<AgentTemplate[]>([]);
+  const cachedTemplates = peekSessionCache<AgentTemplate[]>(TEMPLATE_CACHE_KEY);
+  const [templates, setTemplates] = useState<AgentTemplate[]>(cachedTemplates ?? []);
   const [isSaving, setIsSaving] = useState(false);
-  const [loadingTemplates, setLoadingTemplates] = useState(true);
+  const [loadingTemplates, setLoadingTemplates] = useState(!cachedTemplates);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 

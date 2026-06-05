@@ -1,4 +1,6 @@
 import { getApiErrorMessage, getApiSuccessData } from "@/lib/error-message";
+import { DASHBOARD_OVERVIEW_CACHE_KEY } from "@/lib/dashboard-api";
+import { getOrFetchSessionCached, invalidateSessionCache } from "@/lib/session-cache";
 
 export interface StaffMember {
   id: string;
@@ -71,6 +73,9 @@ async function fetchStaffRequest(accessToken: string) {
   return body as StaffMember[];
 }
 
+export const STAFF_CACHE_KEY = "staff";
+const STAFF_CACHE_TTL_MS = 30_000;
+
 async function createStaffRequest(input: StaffCreateInput, accessToken: string) {
   const response = await fetch("/backend/api/v1/staff", {
     method: "POST",
@@ -125,7 +130,9 @@ export async function fetchStaff(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withAuthRetry(fetchStaffRequest, accessToken, refreshAccessToken);
+  return getOrFetchSessionCached(STAFF_CACHE_KEY, STAFF_CACHE_TTL_MS, () =>
+    withAuthRetry(fetchStaffRequest, accessToken, refreshAccessToken),
+  );
 }
 
 export async function createStaff(
@@ -133,11 +140,13 @@ export async function createStaff(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withAuthRetry(
+  const createdStaff = await withAuthRetry(
     (token) => createStaffRequest(input, token),
     accessToken,
     refreshAccessToken,
   );
+  invalidateSessionCache([STAFF_CACHE_KEY, DASHBOARD_OVERVIEW_CACHE_KEY]);
+  return createdStaff;
 }
 
 export async function updateStaff(
@@ -146,11 +155,13 @@ export async function updateStaff(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withAuthRetry(
+  const updatedStaff = await withAuthRetry(
     (token) => updateStaffRequest(staffId, input, token),
     accessToken,
     refreshAccessToken,
   );
+  invalidateSessionCache([STAFF_CACHE_KEY, DASHBOARD_OVERVIEW_CACHE_KEY]);
+  return updatedStaff;
 }
 
 export async function deleteStaff(
@@ -158,9 +169,10 @@ export async function deleteStaff(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withAuthRetry(
+  await withAuthRetry(
     (token) => deleteStaffRequest(staffId, token),
     accessToken,
     refreshAccessToken,
   );
+  invalidateSessionCache([STAFF_CACHE_KEY, DASHBOARD_OVERVIEW_CACHE_KEY]);
 }

@@ -2,11 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
-import { createStaff, deleteStaff, fetchStaff, type StaffMember } from "@/lib/staff-api";
-import { fetchBackendAgents, type Agent } from "@/lib/agent-api";
+import {
+  createStaff,
+  deleteStaff,
+  fetchStaff,
+  STAFF_CACHE_KEY,
+  type StaffMember,
+} from "@/lib/staff-api";
+import { BACKEND_AGENTS_CACHE_KEY, fetchBackendAgents, type Agent } from "@/lib/agent-api";
 import { useAuth } from "@/hooks/use-auth";
 import { getErrorMessage } from "@/lib/error-message";
+import { peekSessionCache } from "@/lib/session-cache";
 import { Button } from "@/components/ui/button";
+import { CHATS_ROUTE } from "@/lib/routes";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -20,9 +28,11 @@ import {
 
 export default function StaffPage() {
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedAgents = peekSessionCache<Agent[]>(BACKEND_AGENTS_CACHE_KEY);
+  const cachedStaff = peekSessionCache<StaffMember[]>(STAFF_CACHE_KEY);
+  const [agents, setAgents] = useState<Agent[]>(cachedAgents ?? []);
+  const [staff, setStaff] = useState<StaffMember[]>(cachedStaff ?? []);
+  const [loading, setLoading] = useState(!(cachedAgents && cachedStaff));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
@@ -208,7 +218,11 @@ export default function StaffPage() {
                             return (
                               <a
                                 key={agentId}
-                                href={agent ? `/agents/${agent.id}/chat` : "#"}
+                                href={
+                                  agent
+                                    ? `${CHATS_ROUTE}?agentId=${agent.id}&name=${encodeURIComponent(agent.name)}`
+                                    : "#"
+                                }
                                 className="rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground"
                               >
                                 {agent?.name || agentId}

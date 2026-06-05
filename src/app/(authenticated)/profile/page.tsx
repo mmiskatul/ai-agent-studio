@@ -15,7 +15,13 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fetchProfile, type ProfileResponse, updateProfile } from "@/lib/profile-api";
+import { peekSessionCache } from "@/lib/session-cache";
+import {
+  fetchProfile,
+  PROFILE_CACHE_KEY,
+  type ProfileResponse,
+  updateProfile,
+} from "@/lib/profile-api";
 
 function formatDate(value?: string) {
   if (!value) return "Not available";
@@ -32,7 +38,8 @@ function formatDate(value?: string) {
 
 export default function ProfilePage() {
   const { user, accessToken, sessionToken, refreshAccessToken, signOut } = useAuth();
-  const [profile, setProfile] = useState<ProfileResponse | null>(null);
+  const cachedProfile = peekSessionCache<ProfileResponse>(PROFILE_CACHE_KEY);
+  const [profile, setProfile] = useState<ProfileResponse | null>(cachedProfile);
   const [displayNameInput, setDisplayNameInput] = useState("");
   const [profileImageInput, setProfileImageInput] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);

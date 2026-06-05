@@ -6,7 +6,6 @@ import { useMemo } from "react";
 import {
   Bot,
   CircleUserRound,
-  Compass,
   LayoutDashboard,
   LogOut,
   MessageSquare,
@@ -26,7 +25,6 @@ export function AppSidebar() {
     () => [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { label: "Chats", href: CHATS_ROUTE, icon: MessageSquare },
-      { label: "Explore Agents", href: "/explore-agents", icon: Compass },
       { label: "Agents", href: "/agents", icon: Users },
       { label: "Leads", href: "/leads", icon: Phone },
       { label: "Staff", href: "/staff", icon: Users },

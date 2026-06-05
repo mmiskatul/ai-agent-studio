@@ -1,4 +1,6 @@
 import { getApiErrorMessage, getApiSuccessData } from "@/lib/error-message";
+import { DASHBOARD_OVERVIEW_CACHE_KEY } from "@/lib/dashboard-api";
+import { getOrFetchSessionCached, invalidateSessionCache } from "@/lib/session-cache";
 
 export interface Lead {
   id: string;
@@ -64,6 +66,9 @@ async function fetchLeadsRequest(accessToken: string) {
   return body as Lead[];
 }
 
+export const LEADS_CACHE_KEY = "leads";
+const LEADS_CACHE_TTL_MS = 30_000;
+
 async function createLeadRequest(input: LeadCreateInput, accessToken: string) {
   const response = await fetch("/backend/api/v1/leads", {
     method: "POST",
@@ -86,7 +91,9 @@ export async function fetchLeads(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withAuthRetry(fetchLeadsRequest, accessToken, refreshAccessToken);
+  return getOrFetchSessionCached(LEADS_CACHE_KEY, LEADS_CACHE_TTL_MS, () =>
+    withAuthRetry(fetchLeadsRequest, accessToken, refreshAccessToken),
+  );
 }
 
 export async function createLead(
@@ -94,5 +101,11 @@ export async function createLead(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withAuthRetry((token) => createLeadRequest(input, token), accessToken, refreshAccessToken);
+  const createdLead = await withAuthRetry(
+    (token) => createLeadRequest(input, token),
+    accessToken,
+    refreshAccessToken,
+  );
+  invalidateSessionCache([LEADS_CACHE_KEY, DASHBOARD_OVERVIEW_CACHE_KEY]);
+  return createdLead;
 }

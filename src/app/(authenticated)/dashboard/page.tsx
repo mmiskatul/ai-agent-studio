@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Activity, Bot, Check, CheckCircle2, Clock3, Filter, Search, Users } from "lucide-react";
 import {
+  DASHBOARD_OVERVIEW_CACHE_KEY,
   fetchDashboardOverview,
   type DashboardOverview,
   type DashboardAgentSummary,
 } from "@/lib/dashboard-api";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
+import { CHATS_ROUTE } from "@/lib/routes";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,6 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { peekSessionCache } from "@/lib/session-cache";
 
 const emptyDashboard: DashboardOverview = {
   stats: {
@@ -82,8 +85,9 @@ function DashboardSkeleton() {
 
 export default function DashboardPage() {
   const { accessToken, refreshAccessToken } = useAuth();
-  const [dashboard, setDashboard] = useState<DashboardOverview>(emptyDashboard);
-  const [loading, setLoading] = useState(true);
+  const cachedDashboard = peekSessionCache<DashboardOverview>(DASHBOARD_OVERVIEW_CACHE_KEY);
+  const [dashboard, setDashboard] = useState<DashboardOverview>(cachedDashboard ?? emptyDashboard);
+  const [loading, setLoading] = useState(!cachedDashboard);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
@@ -95,7 +99,9 @@ export default function DashboardPage() {
         return;
       }
 
-      setLoading(true);
+      if (!cachedDashboard) {
+        setLoading(true);
+      }
       try {
         const data = await fetchDashboardOverview(accessToken, refreshAccessToken);
         setDashboard(data);
@@ -109,7 +115,7 @@ export default function DashboardPage() {
     }
 
     loadDashboard();
-  }, [accessToken, refreshAccessToken]);
+  }, [accessToken, cachedDashboard, refreshAccessToken]);
 
   const categories = ["All", ...dashboard.categories.map((item) => item.name)];
   const filteredTopAgents = dashboard.top_agents.filter((agent) => {
@@ -286,7 +292,7 @@ export default function DashboardPage() {
                       <TableCell className="text-right">
                         {agent.status === "enabled" ? (
                           <Link
-                            href={`/agents/${agent.id}/chat?name=${encodeURIComponent(agent.name)}`}
+                            href={`${CHATS_ROUTE}?agentId=${agent.id}&name=${encodeURIComponent(agent.name)}`}
                           >
                             <Button size="sm">Chat</Button>
                           </Link>

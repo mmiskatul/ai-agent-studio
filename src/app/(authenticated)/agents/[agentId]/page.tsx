@@ -10,24 +10,29 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import {
+  BACKEND_AGENTS_CACHE_KEY,
   deleteBackendAgent,
   fetchBackendAgent,
   updateBackendAgent,
   type Agent,
 } from "@/lib/agent-api";
 import { getErrorMessage } from "@/lib/error-message";
+import { peekSessionCache } from "@/lib/session-cache";
 import { AUTHENTICATED_HOME } from "@/lib/routes";
 import { buildStandardSystemPrompt } from "@/lib/standard-agent-prompt";
-import { fetchTemplates, type AgentTemplate } from "@/lib/template-api";
+import { fetchTemplates, TEMPLATE_CACHE_KEY, type AgentTemplate } from "@/lib/template-api";
 
 export default function EditAgentPage() {
   const params = useParams<{ agentId: string }>();
   const agentId = params.agentId;
   const router = useRouter();
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
-  const [agent, setAgent] = useState<Agent | null>(null);
-  const [templates, setTemplates] = useState<AgentTemplate[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedAgents = peekSessionCache<Agent[]>(BACKEND_AGENTS_CACHE_KEY) ?? [];
+  const cachedAgent = cachedAgents.find((item) => item.id === agentId) ?? null;
+  const cachedTemplates = peekSessionCache<AgentTemplate[]>(TEMPLATE_CACHE_KEY);
+  const [agent, setAgent] = useState<Agent | null>(cachedAgent);
+  const [templates, setTemplates] = useState<AgentTemplate[]>(cachedTemplates ?? []);
+  const [loading, setLoading] = useState(!(cachedAgent && cachedTemplates));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);

@@ -1,4 +1,5 @@
 import { getApiErrorMessage } from "@/lib/error-message";
+import { getOrFetchSessionCached, invalidateSessionCache } from "@/lib/session-cache";
 
 export interface ProfileStats {
   total_agents: number;
@@ -34,6 +35,9 @@ export interface ProfileResponse {
   latest_agent?: ProfileLatestAgent | null;
   latest_conversation?: ProfileLatestConversation | null;
 }
+
+export const PROFILE_CACHE_KEY = "profile";
+const PROFILE_CACHE_TTL_MS = 45_000;
 
 async function withProfileAuthRetry<T>(
   request: (accessToken: string) => Promise<T>,
@@ -86,7 +90,9 @@ export async function fetchProfile(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withProfileAuthRetry(fetchProfileRequest, accessToken, refreshAccessToken);
+  return getOrFetchSessionCached(PROFILE_CACHE_KEY, PROFILE_CACHE_TTL_MS, () =>
+    withProfileAuthRetry(fetchProfileRequest, accessToken, refreshAccessToken),
+  );
 }
 
 async function updateProfileRequest(
@@ -116,9 +122,11 @@ export async function updateProfile(
   input: { display_name?: string | null; profile_image?: string | null },
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withProfileAuthRetry(
+  const updatedProfile = await withProfileAuthRetry(
     (token) => updateProfileRequest(token, input),
     accessToken,
     refreshAccessToken,
   );
+  invalidateSessionCache(PROFILE_CACHE_KEY);
+  return updatedProfile;
 }

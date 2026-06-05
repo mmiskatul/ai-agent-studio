@@ -1,4 +1,5 @@
 import { getApiErrorMessage } from "@/lib/error-message";
+import { getOrFetchSessionCached } from "@/lib/session-cache";
 
 export interface AgentTemplate {
   id: string;
@@ -26,6 +27,9 @@ async function fetchTemplatesRequest(accessToken: string) {
 
   return body as AgentTemplate[];
 }
+
+export const TEMPLATE_CACHE_KEY = "templates";
+const TEMPLATE_CACHE_TTL_MS = 45_000;
 
 async function withAuthRetry<T>(
   request: (accessToken: string) => Promise<T>,
@@ -62,5 +66,7 @@ export async function fetchTemplates(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withAuthRetry(fetchTemplatesRequest, accessToken, refreshAccessToken);
+  return getOrFetchSessionCached(TEMPLATE_CACHE_KEY, TEMPLATE_CACHE_TTL_MS, () =>
+    withAuthRetry(fetchTemplatesRequest, accessToken, refreshAccessToken),
+  );
 }

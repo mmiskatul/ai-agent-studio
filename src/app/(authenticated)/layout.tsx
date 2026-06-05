@@ -2,13 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { AuthenticatedDataPrefetch } from "@/components/AuthenticatedDataPrefetch";
 import { AppSidebar } from "@/components/AppSidebar";
 import { TopBar } from "@/components/TopBar";
 import { useAuth } from "@/hooks/use-auth";
 import { SIGN_IN_ROUTE } from "@/lib/routes";
 
 export default function AuthenticatedLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const { user, sessionToken, loading } = useAuth();
+  const { user, sessionToken, accessToken, refreshAccessToken, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -29,6 +30,10 @@ export default function AuthenticatedLayout({ children }: Readonly<{ children: R
 
   return (
     <div className="flex h-screen w-full overflow-hidden">
+      <AuthenticatedDataPrefetch
+        accessToken={accessToken}
+        refreshAccessToken={refreshAccessToken}
+      />
       <AppSidebar />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <TopBar />

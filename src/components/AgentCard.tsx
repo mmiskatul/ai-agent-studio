@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Bot, MessageSquare, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { isAgentActive, type Agent } from "@/lib/agent-api";
+import { CHATS_ROUTE } from "@/lib/routes";
 
 interface AgentCardProps {
   agent: Agent;
@@ -44,7 +45,7 @@ export function AgentCard({ agent, onDelete }: AgentCardProps) {
 
       <div className="flex items-center gap-2 border-t border-border pt-3">
         <Link
-          href={active ? `/agents/${agent.id}/chat` : "#"}
+          href={active ? `${CHATS_ROUTE}?agentId=${agent.id}&name=${encodeURIComponent(agent.name)}` : "#"}
           className="flex-1"
           aria-disabled={!active}
           onClick={(event) => {

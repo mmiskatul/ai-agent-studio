@@ -1,4 +1,5 @@
 import { getApiErrorMessage } from "@/lib/error-message";
+import { getOrFetchSessionCached } from "@/lib/session-cache";
 
 export interface DashboardStats {
   total_agents: number;
@@ -40,6 +41,9 @@ export interface DashboardOverview {
   categories: DashboardCategorySummary[];
   recent_activity: DashboardActivityItem[];
 }
+
+export const DASHBOARD_OVERVIEW_CACHE_KEY = "dashboard-overview";
+const DASHBOARD_OVERVIEW_CACHE_TTL_MS = 30_000;
 
 async function withDashboardAuthRetry<T>(
   request: (accessToken: string) => Promise<T>,
@@ -92,5 +96,9 @@ export async function fetchDashboardOverview(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withDashboardAuthRetry(fetchDashboardOverviewRequest, accessToken, refreshAccessToken);
+  return getOrFetchSessionCached(
+    DASHBOARD_OVERVIEW_CACHE_KEY,
+    DASHBOARD_OVERVIEW_CACHE_TTL_MS,
+    () => withDashboardAuthRetry(fetchDashboardOverviewRequest, accessToken, refreshAccessToken),
+  );
 }

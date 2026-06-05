@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createLead, fetchLeads, type Lead } from "@/lib/lead-api";
-import { fetchBackendAgents, type Agent } from "@/lib/agent-api";
+import { createLead, fetchLeads, LEADS_CACHE_KEY, type Lead } from "@/lib/lead-api";
+import { BACKEND_AGENTS_CACHE_KEY, fetchBackendAgents, type Agent } from "@/lib/agent-api";
 import { useAuth } from "@/hooks/use-auth";
 import { getErrorMessage } from "@/lib/error-message";
+import { peekSessionCache } from "@/lib/session-cache";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,9 +21,11 @@ import {
 
 export default function LeadsPage() {
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedAgents = peekSessionCache<Agent[]>(BACKEND_AGENTS_CACHE_KEY);
+  const cachedLeads = peekSessionCache<Lead[]>(LEADS_CACHE_KEY);
+  const [agents, setAgents] = useState<Agent[]>(cachedAgents ?? []);
+  const [leads, setLeads] = useState<Lead[]>(cachedLeads ?? []);
+  const [loading, setLoading] = useState(!(cachedAgents && cachedLeads));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
