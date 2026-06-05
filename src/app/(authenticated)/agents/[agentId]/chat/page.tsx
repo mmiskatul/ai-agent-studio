@@ -2,13 +2,13 @@
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bot, FileText, Loader2, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { Bot, FileText, Loader2, MoreHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  createBackendAgentResponsePage,
   deleteBackendAgentResponsePage,
   deleteBackendAgentResponseMessage,
   fetchBackendAgent,
+  fetchBackendAgents,
   fetchBackendAgentResponseHistory,
   fetchBackendAgentResponsePages,
   generateBackendAgentResponse,
@@ -217,6 +217,25 @@ function updatePageCollection(
   );
 }
 
+function sortPagesByRecentActivity(pages: AgentResponsePage[]) {
+  return [...pages].sort((left, right) => {
+    const leftTimestamp = left.updated_at || left.created_at;
+    const rightTimestamp = right.updated_at || right.created_at;
+    return rightTimestamp.localeCompare(leftTimestamp);
+  });
+}
+
+function updateAgentPagesMap(
+  current: Record<string, AgentResponsePage[]>,
+  agentId: string,
+  pages: AgentResponsePage[],
+) {
+  return {
+    ...current,
+    [agentId]: sortPagesByRecentActivity(pages),
+  };
+}
+
 export default function ChatPage() {
   const params = useParams<{ agentId: string }>();
   const agentId = params.agentId;
@@ -225,11 +244,14 @@ export default function ChatPage() {
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [pages, setPages] = useState<AgentResponsePage[]>([]);
+  const [sidebarAgents, setSidebarAgents] = useState<Agent[]>([]);
+  const [sidebarPagesByAgent, setSidebarPagesByAgent] = useState<
+    Record<string, AgentResponsePage[]>
+  >({});
   const [activePageId, setActivePageId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSwitchingAgent, setIsSwitchingAgent] = useState(false);
-  const [isCreatingPage, setIsCreatingPage] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [messageActionId, setMessageActionId] = useState<string | null>(null);
   const [pageActionId, setPageActionId] = useState<string | null>(null);
@@ -244,6 +266,22 @@ export default function ChatPage() {
   const activePage = pages.find((page) => page.id === activePageId) ?? null;
   const routeAgentName = searchParams.get("name")?.trim() || "";
   const displayAgentName = agent?.name || routeAgentName || "Agent";
+  const flatSidebarChats = sidebarAgents
+    .flatMap((sidebarAgent) => {
+      const agentPages =
+        sidebarAgent.id === agent?.id ? pages : sidebarPagesByAgent[sidebarAgent.id] || [];
+
+      return agentPages.map((page, index) => ({
+        agent: sidebarAgent,
+        page,
+        index,
+      }));
+    })
+    .sort((left, right) => {
+      const leftTimestamp = left.page.updated_at || left.page.created_at;
+      const rightTimestamp = right.page.updated_at || right.page.created_at;
+      return rightTimestamp.localeCompare(leftTimestamp);
+    });
   const derivedActiveTitle = buildTitleFromMessages(messages);
   const activePageTitle =
     memorySummary.title?.trim() && !isWeakChatTitle(memorySummary.title)
@@ -257,6 +295,36 @@ export default function ChatPage() {
     activePageIdRef.current = activePageId;
     loadedAgentIdRef.current = agent?.id ?? null;
   }, [activePageId, agent?.id]);
+
+  const loadSidebarChats = useCallback(
+    async (selectedAgentId?: string) => {
+      if (!accessToken) return;
+
+      const agents = await fetchBackendAgents(accessToken, refreshAccessToken);
+      const pagesByAgentEntries = await Promise.all(
+        agents.map(async (sidebarAgent) => {
+          const agentPages = await fetchBackendAgentResponsePages(
+            sidebarAgent.id,
+            accessToken,
+            refreshAccessToken,
+          ).catch(() => []);
+
+          return [sidebarAgent.id, sortPagesByRecentActivity(agentPages)] as const;
+        }),
+      );
+
+      setSidebarAgents(agents);
+      setSidebarPagesByAgent(Object.fromEntries(pagesByAgentEntries));
+
+      if (!selectedAgentId) return;
+
+      const selectedAgent = agents.find((item) => item.id === selectedAgentId);
+      if (selectedAgent) {
+        setAgent((current) => current ?? selectedAgent);
+      }
+    },
+    [accessToken, refreshAccessToken],
+  );
 
   const loadAgentWorkspace = useCallback(
     async (selectedAgentId: string, updateUrl = false, selectedPageId?: string | null) => {
@@ -294,6 +362,11 @@ export default function ChatPage() {
       );
       const nextPageId = history.chat_id || pageId;
       setAgent(agentData);
+      setSidebarAgents((current) => {
+        const next = current.filter((item) => item.id !== agentData.id);
+        return [agentData, ...next];
+      });
+      setSidebarPagesByAgent((current) => updateAgentPagesMap(current, selectedAgentId, pageList));
       applyChatState(
         setPages,
         setActivePageId,
@@ -314,6 +387,12 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (authLoading) return;
+
+    if (accessToken) {
+      void loadSidebarChats(agentId).catch((err) => {
+        console.error("Failed to load sidebar chats:", err);
+      });
+    }
 
     async function init() {
       if (!accessToken) {
@@ -343,7 +422,7 @@ export default function ChatPage() {
     }
 
     init();
-  }, [accessToken, agentId, authLoading, currentChatId, loadAgentWorkspace]);
+  }, [accessToken, agentId, authLoading, currentChatId, loadAgentWorkspace, loadSidebarChats]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -371,7 +450,9 @@ export default function ChatPage() {
           refreshAccessToken,
         );
         const nextPageId = history.chat_id || pageId;
-        setPages((prev) => mergeActivePageSummary(prev, nextPageId, history.memory_summary));
+        const nextPages = mergeActivePageSummary(pages, nextPageId, history.memory_summary);
+        setPages(nextPages);
+        setSidebarPagesByAgent((current) => updateAgentPagesMap(current, agent.id, nextPages));
         setActivePageId(nextPageId);
         setMessages(history.messages);
         setMemorySummary(history.memory_summary);
@@ -385,36 +466,8 @@ export default function ChatPage() {
         setIsSwitchingAgent(false);
       }
     },
-    [accessToken, activePageId, agent, refreshAccessToken, router],
+    [accessToken, activePageId, agent, pages, refreshAccessToken, router],
   );
-
-  const createPage = useCallback(async () => {
-    if (!agent || !accessToken) return;
-
-    setIsCreatingPage(true);
-    setError(null);
-
-    try {
-      const page = await createBackendAgentResponsePage(
-        agent.id,
-        "New Chat",
-        accessToken,
-        refreshAccessToken,
-      );
-      setPages((prev) => [page, ...prev]);
-      setActivePageId(page.id);
-      setMessages([]);
-      setMemorySummary({ title: "", description: "" });
-      router.replace(`/agents/${agent.id}/chat?chatId=${page.id}`);
-    } catch (err) {
-      console.error("Failed to create response page:", err);
-      const message = getErrorMessage(err, "Failed to create chat.");
-      setError(message);
-      toast.error("Could not create chat", { description: message });
-    } finally {
-      setIsCreatingPage(false);
-    }
-  }, [accessToken, agent, refreshAccessToken, router]);
 
   const handleSend = useCallback(
     async (content: string) => {
@@ -459,6 +512,7 @@ export default function ChatPage() {
           nextMemorySummary,
           nextMessages.length,
         );
+        setSidebarPagesByAgent((current) => updateAgentPagesMap(current, agent.id, nextPages));
         applyChatState(
           setPages,
           setActivePageId,
@@ -503,6 +557,7 @@ export default function ChatPage() {
           history.memory_summary,
           history.messages.length,
         );
+        setSidebarPagesByAgent((current) => updateAgentPagesMap(current, agent.id, nextPages));
         applyChatState(
           setPages,
           setActivePageId,
@@ -549,6 +604,7 @@ export default function ChatPage() {
           history.memory_summary,
           history.messages.length,
         );
+        setSidebarPagesByAgent((current) => updateAgentPagesMap(current, agent.id, nextPages));
         applyChatState(
           setPages,
           setActivePageId,
@@ -585,6 +641,9 @@ export default function ChatPage() {
         await deleteBackendAgentResponsePage(agent.id, pageId, accessToken, refreshAccessToken);
 
         const remainingPages = pages.filter((page) => page.id !== pageId);
+        setSidebarPagesByAgent((current) =>
+          updateAgentPagesMap(current, agent.id, remainingPages),
+        );
         const nextPageId = pageId === activePageId ? (remainingPages[0]?.id ?? null) : activePageId;
 
         if (remainingPages.length === 0) {
@@ -619,6 +678,9 @@ export default function ChatPage() {
             history.messages,
             history.memory_summary,
           );
+          setSidebarPagesByAgent((current) =>
+            updateAgentPagesMap(current, agent.id, remainingPages),
+          );
           router.replace(`/agents/${agent.id}/chat?chatId=${resolvedPageId}`);
         } else {
           setPages(remainingPages);
@@ -636,6 +698,26 @@ export default function ChatPage() {
     [accessToken, activePageId, agent, pages, refreshAccessToken, router],
   );
 
+  const openAgentWorkspace = useCallback(
+    (targetAgentId: string, targetChatId?: string | null) => {
+      if (targetAgentId === agentId) {
+        if (targetChatId) {
+          void selectPage(targetChatId);
+        } else {
+          router.push(`/agents/${targetAgentId}/chat`);
+        }
+        return;
+      }
+
+      setLoading(true);
+      const nextUrl = targetChatId
+        ? `/agents/${targetAgentId}/chat?chatId=${targetChatId}`
+        : `/agents/${targetAgentId}/chat`;
+      router.push(nextUrl);
+    },
+    [agentId, router, selectPage],
+  );
+
   if (!loading && !agent) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4">
@@ -651,99 +733,104 @@ export default function ChatPage() {
     <div className="grid h-[calc(100vh-3.5rem)] gap-3 p-4 lg:grid-cols-[274px_minmax(0,1fr)]">
       <aside className="flex min-h-0 flex-col rounded-xl border border-border bg-card">
         <div className="border-b border-border p-4">
-          <h2 className="text-lg font-bold text-foreground">{displayAgentName}</h2>
-          {pages.length > 0 ? (
-            <div className="mt-4 space-y-3">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-10 w-full gap-2 rounded-lg bg-background"
-                disabled={isCreatingPage}
-                onClick={createPage}
-              >
-                {isCreatingPage ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Plus className="h-4 w-4" />
-                )}
-                New Chat
-              </Button>
-            </div>
-          ) : null}
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            Chats
+          </p>
+          <h2 className="mt-1 text-lg font-bold text-foreground">{displayAgentName}</h2>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          {pages.length === 0 ? (
+          {flatSidebarChats.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center px-3 text-center">
               <FileText className="mb-3 h-10 w-10 text-muted-foreground/40" />
               <p className="text-sm font-medium text-muted-foreground">
-                Start chatting to create the first chat for this agent.
+                No agents or chats found yet.
               </p>
             </div>
           ) : (
             <div className="space-y-2">
-              {pages.map((page, index) => (
-                <div
-                  key={page.id}
-                  className={`group flex items-start gap-2 rounded-lg p-3 transition-colors ${
-                    page.id === activePageId
-                      ? "bg-primary/10 text-primary"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    className="flex min-w-0 flex-1 items-start gap-3 text-left"
-                    onClick={() => selectPage(page.id)}
+              {flatSidebarChats.map(({ agent: sidebarAgent, page, index }) => {
+                const isActiveChat = sidebarAgent.id === agentId && page.id === activePageId;
+                return (
+                  <div
+                    key={page.id}
+                    className={`group flex items-start gap-2 rounded-lg p-3 transition-colors ${
+                      isActiveChat
+                        ? "bg-primary/10 text-primary"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent"
+                    }`}
                   >
-                    <div
-                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-                        page.id === activePageId
-                          ? "bg-primary text-primary-foreground"
-                          : "border border-border bg-background text-muted-foreground"
-                      }`}
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                      onClick={() => {
+                        if (sidebarAgent.id === agentId) {
+                          void selectPage(page.id);
+                          return;
+                        }
+                        openAgentWorkspace(sidebarAgent.id, page.id);
+                      }}
                     >
-                      <FileText className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold text-foreground">
-                        {pageDisplayTitle(page, index, activePageId, memorySummary, messages)}
-                      </p>
-                    </div>
-                  </button>
+                      <div
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                          isActiveChat
+                            ? "bg-primary text-primary-foreground"
+                            : "border border-border bg-background text-muted-foreground"
+                        }`}
+                      >
+                        <FileText className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          {sidebarAgent.name}
+                        </p>
+                        <p className="truncate text-sm font-bold text-foreground">
+                          {pageDisplayTitle(
+                            page,
+                            index,
+                            activePageId,
+                            memorySummary,
+                            isActiveChat ? messages : [],
+                          )}
+                        </p>
+                      </div>
+                    </button>
 
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                        disabled={pageActionId === page.id}
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        {pageActionId === page.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <MoreHorizontal className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        className="cursor-pointer text-destructive focus:text-destructive"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void handleDeletePage(page.id);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              ))}
+                    {sidebarAgent.id === agentId ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                            disabled={pageActionId === page.id}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            {pageActionId === page.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <MoreHorizontal className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            className="cursor-pointer text-destructive focus:text-destructive"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleDeletePage(page.id);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
