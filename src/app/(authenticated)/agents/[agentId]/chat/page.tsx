@@ -8,7 +8,7 @@ import {
   deleteBackendAgentResponsePage,
   deleteBackendAgentResponseMessage,
   fetchBackendAgent,
-  fetchBackendAgents,
+  fetchBackendAllAgentResponsePages,
   fetchBackendAgentResponseHistory,
   fetchBackendAgentResponsePages,
   generateBackendAgentResponse,
@@ -226,14 +226,14 @@ function sortPagesByRecentActivity(pages: AgentResponsePage[]) {
 }
 
 function updateAgentPagesMap(
-  current: Record<string, AgentResponsePage[]>,
+  current: AgentResponsePage[],
   agentId: string,
   pages: AgentResponsePage[],
 ) {
-  return {
-    ...current,
-    [agentId]: sortPagesByRecentActivity(pages),
-  };
+  return sortPagesByRecentActivity([
+    ...current.filter((page) => page.agent_id !== agentId),
+    ...pages,
+  ]);
 }
 
 export default function ChatPage() {
@@ -244,10 +244,7 @@ export default function ChatPage() {
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [pages, setPages] = useState<AgentResponsePage[]>([]);
-  const [sidebarAgents, setSidebarAgents] = useState<Agent[]>([]);
-  const [sidebarPagesByAgent, setSidebarPagesByAgent] = useState<
-    Record<string, AgentResponsePage[]>
-  >({});
+  const [sidebarChats, setSidebarChats] = useState<AgentResponsePage[]>([]);
   const [activePageId, setActivePageId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -266,22 +263,16 @@ export default function ChatPage() {
   const activePage = pages.find((page) => page.id === activePageId) ?? null;
   const routeAgentName = searchParams.get("name")?.trim() || "";
   const displayAgentName = agent?.name || routeAgentName || "Agent";
-  const flatSidebarChats = sidebarAgents
-    .flatMap((sidebarAgent) => {
-      const agentPages =
-        sidebarAgent.id === agent?.id ? pages : sidebarPagesByAgent[sidebarAgent.id] || [];
-
-      return agentPages.map((page, index) => ({
-        agent: sidebarAgent,
-        page,
-        index,
-      }));
-    })
-    .sort((left, right) => {
-      const leftTimestamp = left.page.updated_at || left.page.created_at;
-      const rightTimestamp = right.page.updated_at || right.page.created_at;
-      return rightTimestamp.localeCompare(leftTimestamp);
-    });
+  const flatSidebarChats = sortPagesByRecentActivity(
+    updateAgentPagesMap(
+      sidebarChats,
+      agentId,
+      pages.map((page) => ({
+        ...page,
+        agent_name: page.agent_name || agent?.name || routeAgentName || null,
+      })),
+    ),
+  ).map((page, index) => ({ page, index }));
   const derivedActiveTitle = buildTitleFromMessages(messages);
   const activePageTitle =
     memorySummary.title?.trim() && !isWeakChatTitle(memorySummary.title)
@@ -297,31 +288,11 @@ export default function ChatPage() {
   }, [activePageId, agent?.id]);
 
   const loadSidebarChats = useCallback(
-    async (selectedAgentId?: string) => {
+    async () => {
       if (!accessToken) return;
 
-      const agents = await fetchBackendAgents(accessToken, refreshAccessToken);
-      const pagesByAgentEntries = await Promise.all(
-        agents.map(async (sidebarAgent) => {
-          const agentPages = await fetchBackendAgentResponsePages(
-            sidebarAgent.id,
-            accessToken,
-            refreshAccessToken,
-          ).catch(() => []);
-
-          return [sidebarAgent.id, sortPagesByRecentActivity(agentPages)] as const;
-        }),
-      );
-
-      setSidebarAgents(agents);
-      setSidebarPagesByAgent(Object.fromEntries(pagesByAgentEntries));
-
-      if (!selectedAgentId) return;
-
-      const selectedAgent = agents.find((item) => item.id === selectedAgentId);
-      if (selectedAgent) {
-        setAgent((current) => current ?? selectedAgent);
-      }
+      const allPages = await fetchBackendAllAgentResponsePages(accessToken, refreshAccessToken);
+      setSidebarChats(sortPagesByRecentActivity(allPages));
     },
     [accessToken, refreshAccessToken],
   );
@@ -362,11 +333,16 @@ export default function ChatPage() {
       );
       const nextPageId = history.chat_id || pageId;
       setAgent(agentData);
-      setSidebarAgents((current) => {
-        const next = current.filter((item) => item.id !== agentData.id);
-        return [agentData, ...next];
-      });
-      setSidebarPagesByAgent((current) => updateAgentPagesMap(current, selectedAgentId, pageList));
+      setSidebarChats((current) =>
+        updateAgentPagesMap(
+          current,
+          selectedAgentId,
+          pageList.map((page) => ({
+            ...page,
+            agent_name: page.agent_name || agentData.name,
+          })),
+        ),
+      );
       applyChatState(
         setPages,
         setActivePageId,
@@ -389,7 +365,7 @@ export default function ChatPage() {
     if (authLoading) return;
 
     if (accessToken) {
-      void loadSidebarChats(agentId).catch((err) => {
+      void loadSidebarChats().catch((err) => {
         console.error("Failed to load sidebar chats:", err);
       });
     }
@@ -401,11 +377,19 @@ export default function ChatPage() {
         return;
       }
 
+      const isInitialLoad = loadedAgentIdRef.current === null;
+      if (isInitialLoad) {
+        setLoading(true);
+      } else {
+        setIsSwitchingAgent(true);
+      }
+
       try {
         setError(null);
         if (loadedAgentIdRef.current === agentId) {
           if (activePageIdRef.current && activePageIdRef.current === currentChatId) {
             setLoading(false);
+            setIsSwitchingAgent(false);
             return;
           }
         }
@@ -418,6 +402,7 @@ export default function ChatPage() {
         toast.error("Could not load chat", { description: message });
       } finally {
         setLoading(false);
+        setIsSwitchingAgent(false);
       }
     }
 
@@ -452,7 +437,16 @@ export default function ChatPage() {
         const nextPageId = history.chat_id || pageId;
         const nextPages = mergeActivePageSummary(pages, nextPageId, history.memory_summary);
         setPages(nextPages);
-        setSidebarPagesByAgent((current) => updateAgentPagesMap(current, agent.id, nextPages));
+        setSidebarChats((current) =>
+          updateAgentPagesMap(
+            current,
+            agent.id,
+            nextPages.map((page) => ({
+              ...page,
+              agent_name: page.agent_name || agent.name,
+            })),
+          ),
+        );
         setActivePageId(nextPageId);
         setMessages(history.messages);
         setMemorySummary(history.memory_summary);
@@ -512,7 +506,16 @@ export default function ChatPage() {
           nextMemorySummary,
           nextMessages.length,
         );
-        setSidebarPagesByAgent((current) => updateAgentPagesMap(current, agent.id, nextPages));
+        setSidebarChats((current) =>
+          updateAgentPagesMap(
+            current,
+            agent.id,
+            nextPages.map((page) => ({
+              ...page,
+              agent_name: page.agent_name || agent.name,
+            })),
+          ),
+        );
         applyChatState(
           setPages,
           setActivePageId,
@@ -557,7 +560,16 @@ export default function ChatPage() {
           history.memory_summary,
           history.messages.length,
         );
-        setSidebarPagesByAgent((current) => updateAgentPagesMap(current, agent.id, nextPages));
+        setSidebarChats((current) =>
+          updateAgentPagesMap(
+            current,
+            agent.id,
+            nextPages.map((page) => ({
+              ...page,
+              agent_name: page.agent_name || agent.name,
+            })),
+          ),
+        );
         applyChatState(
           setPages,
           setActivePageId,
@@ -604,7 +616,16 @@ export default function ChatPage() {
           history.memory_summary,
           history.messages.length,
         );
-        setSidebarPagesByAgent((current) => updateAgentPagesMap(current, agent.id, nextPages));
+        setSidebarChats((current) =>
+          updateAgentPagesMap(
+            current,
+            agent.id,
+            nextPages.map((page) => ({
+              ...page,
+              agent_name: page.agent_name || agent.name,
+            })),
+          ),
+        );
         applyChatState(
           setPages,
           setActivePageId,
@@ -641,8 +662,15 @@ export default function ChatPage() {
         await deleteBackendAgentResponsePage(agent.id, pageId, accessToken, refreshAccessToken);
 
         const remainingPages = pages.filter((page) => page.id !== pageId);
-        setSidebarPagesByAgent((current) =>
-          updateAgentPagesMap(current, agent.id, remainingPages),
+        setSidebarChats((current) =>
+          updateAgentPagesMap(
+            current,
+            agent.id,
+            remainingPages.map((page) => ({
+              ...page,
+              agent_name: page.agent_name || agent.name,
+            })),
+          ),
         );
         const nextPageId = pageId === activePageId ? (remainingPages[0]?.id ?? null) : activePageId;
 
@@ -678,9 +706,6 @@ export default function ChatPage() {
             history.messages,
             history.memory_summary,
           );
-          setSidebarPagesByAgent((current) =>
-            updateAgentPagesMap(current, agent.id, remainingPages),
-          );
           router.replace(`/agents/${agent.id}/chat?chatId=${resolvedPageId}`);
         } else {
           setPages(remainingPages);
@@ -709,7 +734,7 @@ export default function ChatPage() {
         return;
       }
 
-      setLoading(true);
+      setIsSwitchingAgent(true);
       const nextUrl = targetChatId
         ? `/agents/${targetAgentId}/chat?chatId=${targetChatId}`
         : `/agents/${targetAgentId}/chat`;
@@ -749,8 +774,8 @@ export default function ChatPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {flatSidebarChats.map(({ agent: sidebarAgent, page, index }) => {
-                const isActiveChat = sidebarAgent.id === agentId && page.id === activePageId;
+              {flatSidebarChats.map(({ page, index }) => {
+                const isActiveChat = page.agent_id === agentId && page.id === activePageId;
                 return (
                   <div
                     key={page.id}
@@ -764,11 +789,11 @@ export default function ChatPage() {
                       type="button"
                       className="flex min-w-0 flex-1 items-start gap-3 text-left"
                       onClick={() => {
-                        if (sidebarAgent.id === agentId) {
+                        if (page.agent_id === agentId) {
                           void selectPage(page.id);
                           return;
                         }
-                        openAgentWorkspace(sidebarAgent.id, page.id);
+                        openAgentWorkspace(page.agent_id, page.id);
                       }}
                     >
                       <div
@@ -782,7 +807,7 @@ export default function ChatPage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          {sidebarAgent.name}
+                          {page.agent_name || "Agent"}
                         </p>
                         <p className="truncate text-sm font-bold text-foreground">
                           {pageDisplayTitle(
@@ -796,7 +821,7 @@ export default function ChatPage() {
                       </div>
                     </button>
 
-                    {sidebarAgent.id === agentId ? (
+                    {page.agent_id === agentId ? (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
@@ -837,7 +862,7 @@ export default function ChatPage() {
       </aside>
 
       <main className="min-h-0 overflow-hidden">
-        {loading || !agent ? (
+        {loading || isSwitchingAgent || !agent ? (
           <ChatSkeleton />
         ) : (
           <ChatInterface

@@ -67,6 +67,7 @@ export interface MemorySummary {
 export interface AgentResponsePage {
   id: string;
   agent_id: string;
+  agent_name?: string | null;
   title?: string | null;
   memory_summary: MemorySummary;
   message_count: number;
@@ -524,6 +525,36 @@ export async function fetchBackendAgentResponsePages(
 ) {
   return withBackendAuthRetry(
     (token) => fetchBackendAgentResponsePagesRequest(agentId, token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+async function fetchBackendAllAgentResponsePagesRequest(accessToken: string) {
+  const response = await fetch("/backend/api/v1/agents/response/pages", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(body, "Failed to load chats"));
+  }
+
+  return (body as AgentResponsePage[]).map((page) => ({
+    ...page,
+    memory_summary: normalizeMemorySummary(page.memory_summary),
+  }));
+}
+
+export async function fetchBackendAllAgentResponsePages(
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withBackendAuthRetry(
+    fetchBackendAllAgentResponsePagesRequest,
     accessToken,
     refreshAccessToken,
   );
