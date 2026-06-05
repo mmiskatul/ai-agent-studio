@@ -290,7 +290,10 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
   const currentChatId = searchParams.get("chatId");
   const queryAgentId = searchParams.get("agentId");
-  const cachedSidebarChats = peekSessionCache<AgentResponsePage[]>("backend-all-agent-response-pages");
+  const cachedSidebarChats = peekSessionCache<AgentResponsePage[]>(
+    "backend-all-agent-response-pages",
+    { allowExpired: true },
+  );
   const initialSidebarPage = currentChatId
     ? cachedSidebarChats?.find((page) => page.id === currentChatId) ?? null
     : null;
@@ -302,8 +305,9 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
     null;
   const initialTargetChatId = currentChatId || initialSidebarPage?.id || cachedSidebarChats?.[0]?.id || null;
   const cachedWorkspaceSnapshot = initialTargetAgentId
-    ? peekSessionCache<CachedWorkspaceSnapshot>(
+      ? peekSessionCache<CachedWorkspaceSnapshot>(
         getWorkspaceSnapshotCacheKey(initialTargetAgentId, initialTargetChatId),
+        { allowExpired: true },
       )
     : null;
   const [agent, setAgent] = useState<Agent | null>(cachedWorkspaceSnapshot?.agent ?? null);
@@ -524,6 +528,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
 
         const resolvedWorkspaceSnapshot = peekSessionCache<CachedWorkspaceSnapshot>(
           getWorkspaceSnapshotCacheKey(targetAgentId, targetChatId),
+          { allowExpired: true },
         );
         if (resolvedWorkspaceSnapshot) {
           setAgent(resolvedWorkspaceSnapshot.agent);

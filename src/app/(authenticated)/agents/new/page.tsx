@@ -18,7 +18,9 @@ const NEW_AGENT_DRAFT_KEY = "agenthub.new-agent-draft";
 export default function NewAgentPage() {
   const router = useRouter();
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
-  const cachedTemplates = peekSessionCache<AgentTemplate[]>(TEMPLATE_CACHE_KEY);
+  const cachedTemplates = peekSessionCache<AgentTemplate[]>(TEMPLATE_CACHE_KEY, {
+    allowExpired: true,
+  });
   const [templates, setTemplates] = useState<AgentTemplate[]>(cachedTemplates ?? []);
   const [isSaving, setIsSaving] = useState(false);
   const [loadingTemplates, setLoadingTemplates] = useState(!cachedTemplates);
@@ -39,6 +41,10 @@ export default function NewAgentPage() {
         const data = await fetchTemplates(token, refreshAccessToken);
         setTemplates(data);
       } catch (err) {
+        if (templates.length > 0) {
+          setLoadingTemplates(false);
+          return;
+        }
         const message = getErrorMessage(err, "Failed to load templates.");
         setError(message);
         toast.error("Could not load templates", { description: message });
@@ -48,7 +54,7 @@ export default function NewAgentPage() {
     }
 
     void loadTemplates();
-  }, [accessToken, authLoading, refreshAccessToken]);
+  }, [accessToken, authLoading, refreshAccessToken, templates.length]);
 
   async function handleSubmit(values: AgentFormValues) {
     if (!accessToken) {

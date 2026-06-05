@@ -1,5 +1,5 @@
 import { getApiErrorMessage } from "@/lib/error-message";
-import { getOrFetchSessionCached } from "@/lib/session-cache";
+import { getOrFetchSessionCached, peekSessionCache } from "@/lib/session-cache";
 
 export interface AgentTemplate {
   id: string;
@@ -66,7 +66,17 @@ export async function fetchTemplates(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return getOrFetchSessionCached(TEMPLATE_CACHE_KEY, TEMPLATE_CACHE_TTL_MS, () =>
-    withAuthRetry(fetchTemplatesRequest, accessToken, refreshAccessToken),
-  );
+  try {
+    return await getOrFetchSessionCached(TEMPLATE_CACHE_KEY, TEMPLATE_CACHE_TTL_MS, () =>
+      withAuthRetry(fetchTemplatesRequest, accessToken, refreshAccessToken),
+    );
+  } catch (error) {
+    const staleTemplates = peekSessionCache<AgentTemplate[]>(TEMPLATE_CACHE_KEY, {
+      allowExpired: true,
+    });
+    if (staleTemplates?.length) {
+      return staleTemplates;
+    }
+    throw error;
+  }
 }

@@ -52,8 +52,12 @@ import { CHATS_ROUTE } from "@/lib/routes";
 
 export default function AgentsPage() {
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
-  const cachedAgents = peekSessionCache<Agent[]>(BACKEND_AGENTS_CACHE_KEY);
-  const cachedTemplates = peekSessionCache<AgentTemplate[]>(TEMPLATE_CACHE_KEY);
+  const cachedAgents = peekSessionCache<Agent[]>(BACKEND_AGENTS_CACHE_KEY, {
+    allowExpired: true,
+  });
+  const cachedTemplates = peekSessionCache<AgentTemplate[]>(TEMPLATE_CACHE_KEY, {
+    allowExpired: true,
+  });
   const [agents, setAgents] = useState<Agent[]>(cachedAgents ?? []);
   const [loading, setLoading] = useState(!cachedAgents);
   const [error, setError] = useState("");
@@ -104,14 +108,16 @@ export default function AgentsPage() {
         const data = await fetchTemplates(tokenValue, refreshAccessToken);
         setTemplates(data);
       } catch (err) {
+        if (templates.length > 0) {
+          return;
+        }
         const message = getErrorMessage(err, "Failed to load templates");
-        console.error("Failed to load templates:", err);
         toast.error("Could not load templates", { description: message });
       }
     }
 
     void loadTemplates(token);
-  }, [accessToken, refreshAccessToken]);
+  }, [accessToken, refreshAccessToken, templates.length]);
 
   async function handleOpenEdit(agentId: string) {
     if (!accessToken) return;

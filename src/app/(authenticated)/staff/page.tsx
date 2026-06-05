@@ -28,11 +28,11 @@ import {
 
 export default function StaffPage() {
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
-  const cachedAgents = peekSessionCache<Agent[]>(BACKEND_AGENTS_CACHE_KEY);
-  const cachedStaff = peekSessionCache<StaffMember[]>(STAFF_CACHE_KEY);
+  const cachedAgents = peekSessionCache<Agent[]>(BACKEND_AGENTS_CACHE_KEY, { allowExpired: true });
+  const cachedStaff = peekSessionCache<StaffMember[]>(STAFF_CACHE_KEY, { allowExpired: true });
   const [agents, setAgents] = useState<Agent[]>(cachedAgents ?? []);
   const [staff, setStaff] = useState<StaffMember[]>(cachedStaff ?? []);
-  const [loading, setLoading] = useState(!(cachedAgents && cachedStaff));
+  const [loading, setLoading] = useState(!(cachedAgents || cachedStaff));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({

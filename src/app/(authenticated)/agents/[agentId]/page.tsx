@@ -27,12 +27,15 @@ export default function EditAgentPage() {
   const agentId = params.agentId;
   const router = useRouter();
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
-  const cachedAgents = peekSessionCache<Agent[]>(BACKEND_AGENTS_CACHE_KEY) ?? [];
+  const cachedAgents =
+    peekSessionCache<Agent[]>(BACKEND_AGENTS_CACHE_KEY, { allowExpired: true }) ?? [];
   const cachedAgent = cachedAgents.find((item) => item.id === agentId) ?? null;
-  const cachedTemplates = peekSessionCache<AgentTemplate[]>(TEMPLATE_CACHE_KEY);
+  const cachedTemplates = peekSessionCache<AgentTemplate[]>(TEMPLATE_CACHE_KEY, {
+    allowExpired: true,
+  });
   const [agent, setAgent] = useState<Agent | null>(cachedAgent);
   const [templates, setTemplates] = useState<AgentTemplate[]>(cachedTemplates ?? []);
-  const [loading, setLoading] = useState(!(cachedAgent && cachedTemplates));
+  const [loading, setLoading] = useState(!(cachedAgent || cachedTemplates));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -63,6 +66,10 @@ export default function EditAgentPage() {
         setTemplates(templateData);
         setError("");
       } catch (err) {
+        if (agent && templates.length > 0) {
+          setLoading(false);
+          return;
+        }
         const message = getErrorMessage(err, "Agent not found");
         setError(message);
         toast.error("Could not load agent", { description: message });
@@ -72,7 +79,7 @@ export default function EditAgentPage() {
     }
 
     void loadData();
-  }, [accessToken, agentId, authLoading, refreshAccessToken]);
+  }, [accessToken, agentId, authLoading, refreshAccessToken, templates.length, Boolean(agent)]);
 
   async function handleSubmit(values: AgentFormValues) {
     if (!accessToken || !agent) return;
