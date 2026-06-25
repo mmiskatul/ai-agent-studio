@@ -9,7 +9,6 @@ import {
   LayoutDashboard,
   LogOut,
   MessageSquare,
-  Phone,
   Users,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -26,8 +25,6 @@ export function AppSidebar() {
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { label: "Chats", href: CHATS_ROUTE, icon: MessageSquare },
       { label: "Agents", href: "/agents", icon: Users },
-      { label: "Leads", href: "/leads", icon: Phone },
-      { label: "Staff", href: "/staff", icon: Users },
       { label: "Profile", href: "/profile", icon: CircleUserRound },
     ],
     [],

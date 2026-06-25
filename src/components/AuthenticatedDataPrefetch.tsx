@@ -7,10 +7,8 @@ import {
   fetchBackendAllAgentResponsePages,
 } from "@/lib/agent-api";
 import { fetchDashboardOverview } from "@/lib/dashboard-api";
-import { fetchLeads } from "@/lib/lead-api";
 import { fetchProfile } from "@/lib/profile-api";
 import { CHATS_ROUTE } from "@/lib/routes";
-import { fetchStaff } from "@/lib/staff-api";
 import { fetchTemplates } from "@/lib/template-api";
 
 interface AuthenticatedDataPrefetchProps {
@@ -18,7 +16,7 @@ interface AuthenticatedDataPrefetchProps {
   refreshAccessToken?: () => Promise<string | null>;
 }
 
-const ROUTES_TO_PREFETCH = ["/dashboard", CHATS_ROUTE, "/agents", "/leads", "/staff", "/profile"];
+const ROUTES_TO_PREFETCH = ["/dashboard", CHATS_ROUTE, "/agents", "/profile"];
 
 export function AuthenticatedDataPrefetch({
   accessToken,
@@ -41,9 +39,7 @@ export function AuthenticatedDataPrefetch({
       fetchBackendAgents(accessToken, refreshAccessToken),
       fetchBackendAllAgentResponsePages(accessToken, refreshAccessToken),
       fetchTemplates(accessToken, refreshAccessToken),
-      fetchLeads(accessToken, refreshAccessToken),
       fetchProfile(accessToken, refreshAccessToken),
-      fetchStaff(accessToken, refreshAccessToken),
     ]);
   }, [accessToken, refreshAccessToken, router]);
 

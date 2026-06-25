@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Activity, Bot, Check, CheckCircle2, Clock3, Filter, Search, Users } from "lucide-react";
+import { Activity, Bot, Check, CheckCircle2, Clock3, Filter, Search } from "lucide-react";
 import {
   DASHBOARD_OVERVIEW_CACHE_KEY,
   fetchDashboardOverview,
@@ -41,8 +41,6 @@ const emptyDashboard: DashboardOverview = {
     total_chats: 0,
     total_messages: 0,
     queries_30d: 0,
-    total_leads: 0,
-    total_staff: 0,
   },
   top_agents: [],
   categories: [],
@@ -154,18 +152,6 @@ export default function DashboardPage() {
       value: dashboard.stats.recently_updated_agents,
       description: "Changed in last 7 days",
       icon: Activity,
-    },
-    {
-      label: "Total Leads",
-      value: dashboard.stats.total_leads,
-      description: "Captured across your agents",
-      icon: Users,
-    },
-    {
-      label: "Staff Members",
-      value: dashboard.stats.total_staff,
-      description: "Workspace team access",
-      icon: Users,
     },
   ];
 

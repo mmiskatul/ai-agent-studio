@@ -29,7 +29,7 @@ function buildDescriptionFallback(name: string, role?: string) {
   const cleanedRole = role?.trim();
 
   if (/(sales|lead|outreach|revenue)/i.test(loweredName)) {
-    return `${cleanedName} helps sales teams qualify leads, respond to buyer questions, and move deals forward with clearer next steps. It is useful for drafting outreach, handling objections, and turning pipeline activity into practical follow-up actions.`;
+    return `${cleanedName} helps sales teams respond to buyer questions, handle objections, and move deals forward with clearer next steps. It is useful for drafting outreach, refining sales communication, and turning pipeline activity into practical follow-up actions.`;
   }
 
   if (/(support|help|service|customer)/i.test(loweredName)) {

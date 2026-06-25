@@ -9,8 +9,6 @@ export interface DashboardStats {
   total_chats: number;
   total_messages: number;
   queries_30d: number;
-  total_leads: number;
-  total_staff: number;
 }
 
 export interface DashboardAgentSummary {

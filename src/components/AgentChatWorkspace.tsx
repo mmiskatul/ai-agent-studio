@@ -237,6 +237,14 @@ function updateAgentPagesMap(
   ]);
 }
 
+function pickInitialChatIdForAgent(
+  pages: AgentResponsePage[] | null | undefined,
+  agentId: string | null,
+) {
+  if (!agentId || !pages) return null;
+  return pages.find((page) => page.agent_id === agentId)?.id ?? null;
+}
+
 type CachedChatState = {
   messages: Message[];
   memorySummary: MemorySummary;
@@ -297,13 +305,15 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
   const initialSidebarPage = currentChatId
     ? cachedSidebarChats?.find((page) => page.id === currentChatId) ?? null
     : null;
+  const initialAgentTargetId = routeAgentId || queryAgentId || initialSidebarPage?.agent_id || null;
   const initialTargetAgentId =
-    routeAgentId ||
-    queryAgentId ||
-    initialSidebarPage?.agent_id ||
-    cachedSidebarChats?.[0]?.agent_id ||
+    initialAgentTargetId || cachedSidebarChats?.[0]?.agent_id || null;
+  const initialTargetChatId =
+    currentChatId ||
+    initialSidebarPage?.id ||
+    pickInitialChatIdForAgent(cachedSidebarChats, initialAgentTargetId) ||
+    cachedSidebarChats?.[0]?.id ||
     null;
-  const initialTargetChatId = currentChatId || initialSidebarPage?.id || cachedSidebarChats?.[0]?.id || null;
   const cachedWorkspaceSnapshot = initialTargetAgentId
       ? peekSessionCache<CachedWorkspaceSnapshot>(
         getWorkspaceSnapshotCacheKey(initialTargetAgentId, initialTargetChatId),
@@ -513,7 +523,12 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
           : null;
         const targetAgentId =
           routeAgentId || queryAgentId || selectedSidebarPage?.agent_id || allPages?.[0]?.agent_id;
-        const targetChatId = currentChatId || selectedSidebarPage?.id || allPages?.[0]?.id || null;
+        const targetChatId =
+          currentChatId ||
+          selectedSidebarPage?.id ||
+          pickInitialChatIdForAgent(allPages, targetAgentId ?? null) ||
+          allPages?.[0]?.id ||
+          null;
 
         if (!targetAgentId) {
           setAgent(null);
