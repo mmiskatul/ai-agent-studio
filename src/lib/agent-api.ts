@@ -1,6 +1,9 @@
 import { getApiErrorMessage, getApiSuccessData } from "@/lib/error-message";
 import { DASHBOARD_OVERVIEW_CACHE_KEY } from "@/lib/dashboard-api";
-import { getOrFetchSessionCached, invalidateSessionCache } from "@/lib/session-cache";
+import {
+  getOrFetchSessionCached,
+  invalidateSessionCache,
+} from "@/lib/session-cache";
 
 export interface Agent {
   id: string;
@@ -609,39 +612,20 @@ async function fetchBackendAgentResponseWorkspaceRequest(
   chatId: string | null,
   accessToken: string,
 ) {
-  const params = new URLSearchParams();
-  if (chatId) {
-    params.set("chat_id", chatId);
-  }
+  const [agent, pages, history] = await Promise.all([
+    fetchBackendAgentRequest(agentId, accessToken),
+    fetchBackendAgentResponsePagesRequest(agentId, accessToken),
+    fetchBackendAgentResponseHistoryRequest(agentId, chatId, accessToken),
+  ]);
 
-  const query = params.toString();
-  const response = await fetch(
-    `/backend/api/v1/agents/${agentId}/response/workspace${query ? `?${query}` : ""}`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
-  );
-
-  const body = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(getApiErrorMessage(body, "Failed to load chat workspace"));
-  }
-
-  const parsedBody = body as AgentResponseWorkspace;
   return {
-    agent: normalizeAgent(parsedBody.agent),
-    chat_id: parsedBody.chat_id,
-    memory_summary: normalizeMemorySummary(parsedBody.memory_summary),
-    messages: (parsedBody.messages || []).map(normalizeMessage),
-    total_message_count: parsedBody.total_message_count ?? (parsedBody.messages || []).length,
-    has_more_messages: Boolean(parsedBody.has_more_messages),
-    pages: (parsedBody.pages || []).map((page) => ({
-      ...page,
-      memory_summary: normalizeMemorySummary(page.memory_summary),
-    })),
+    agent,
+    chat_id: history.chat_id,
+    memory_summary: history.memory_summary,
+    messages: history.messages,
+    total_message_count: history.total_message_count,
+    has_more_messages: history.has_more_messages,
+    pages,
   } satisfies AgentResponseWorkspace;
 }
 

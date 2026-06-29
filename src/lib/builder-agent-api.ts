@@ -9,7 +9,7 @@ export interface CreateBuilderAgentInput {
   systemPrompt: string;
   welcomeMessage?: string;
   temperature: number;
-  status: string;
+  status: "enabled" | "disabled";
 }
 
 async function postBuilderAgent(input: CreateBuilderAgentInput, accessToken: string) {

@@ -8,7 +8,7 @@ export interface AgentTemplate {
   name: string;
   role: string;
   description: string;
-  language: "EN" | "DE" | "RU";
+  language: string;
   system_prompt: string;
 }
 
