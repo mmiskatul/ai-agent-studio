@@ -6,6 +6,7 @@ import { Bot, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   deleteBackendAgentResponseMessage,
+  fetchBackendAgent,
   fetchBackendAllAgentResponsePages,
   fetchBackendAgentResponseHistory,
   fetchBackendAgentResponseWorkspace,
@@ -270,6 +271,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
   );
   const [messages, setMessages] = useState<Message[]>(cachedWorkspaceSnapshot?.messages ?? []);
   const [loading, setLoading] = useState(!cachedWorkspaceSnapshot);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isSwitchingAgent, setIsSwitchingAgent] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [messageActionId, setMessageActionId] = useState<string | null>(null);
@@ -557,6 +559,24 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
           setLoading(false);
         }
 
+        if (!resolvedWorkspaceSnapshot && routeAgentId && targetAgentId === routeAgentId) {
+          try {
+            const eagerAgent = await fetchBackendAgent(
+              targetAgentId,
+              accessToken,
+              refreshAccessToken,
+            );
+            if (isAgentActive(eagerAgent)) {
+              setAgent(eagerAgent);
+              setPages((current) => current);
+              setMessages((current) => current);
+              setLoading(false);
+            }
+          } catch {
+            // Let the workspace request surface the real error if it also fails.
+          }
+        }
+
         if (loadedAgentIdRef.current === targetAgentId) {
           if (activePageIdRef.current && activePageIdRef.current === currentChatId) {
             setLoading(false);
@@ -565,6 +585,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
           }
         }
 
+        setIsLoadingHistory(Boolean(agentRef.current?.id === targetAgentId || routeAgentId));
         await loadAgentWorkspace(
           targetAgentId,
           !routeAgentId && !currentChatId && Boolean(targetChatId),
@@ -577,6 +598,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
         toast.error("Could not load chat", { description: message });
       } finally {
         setLoading(false);
+        setIsLoadingHistory(false);
         setIsSwitchingAgent(false);
       }
     }
@@ -871,7 +893,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
   return (
     <div className="h-[calc(100vh-3.5rem)] p-4">
       <main className="h-full min-h-0 overflow-hidden">
-        {loading || isSwitchingAgent || !agent ? (
+        {(!agent && (loading || isSwitchingAgent)) || !agent ? (
           <ChatSkeleton />
         ) : (
           <ChatInterface
@@ -885,6 +907,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
             streamingContent=""
             error={error}
             messageActionId={messageActionId}
+            isLoadingHistory={isLoadingHistory}
             hasMoreMessages={hasMoreMessages}
             totalMessageCount={totalMessageCount}
           />
