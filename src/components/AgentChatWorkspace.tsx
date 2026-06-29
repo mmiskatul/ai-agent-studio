@@ -284,7 +284,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
     currentChatId ||
     initialSidebarPage?.id ||
     pickInitialChatIdForAgent(cachedSidebarChats, initialAgentTargetId) ||
-    cachedSidebarChats?.[0]?.id ||
+    (!initialAgentTargetId ? cachedSidebarChats?.[0]?.id : null) ||
     null;
   const cachedWorkspaceSnapshot = initialTargetAgentId
     ? peekSessionCache<CachedWorkspaceSnapshot>(

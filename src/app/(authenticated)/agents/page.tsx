@@ -15,6 +15,7 @@ import {
   type Agent,
   type AgentUpdate,
 } from "@/lib/agent-api";
+import { primeAgentChatEntrySnapshot } from "@/lib/agent-chat-entry";
 import { getErrorMessage } from "@/lib/error-message";
 import { useAuth } from "@/hooks/use-auth";
 import { peekSessionCache } from "@/lib/session-cache";
@@ -450,7 +451,10 @@ export default function AgentsPage() {
                       {isAgentActive(agent) ? (
                         <Link
                           href={buildAgentChatRoute(agent.id)}
-                          onClick={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            primeAgentChatEntrySnapshot(agent);
+                          }}
                         >
                           <Button size="sm" className="gap-1.5">
                             <MessageSquare className="h-3.5 w-3.5" />

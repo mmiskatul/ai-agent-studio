@@ -18,6 +18,10 @@ import {
   type DashboardStats,
   type DashboardAgentSummary,
 } from "@/lib/dashboard-api";
+import {
+  createAgentSnapshotFromSummary,
+  primeAgentChatEntrySnapshot,
+} from "@/lib/agent-chat-entry";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { buildAgentChatRoute, buildAgentRoute } from "@/lib/routes";
@@ -251,6 +255,18 @@ export default function DashboardPage() {
     },
   ];
 
+  function primeAgentChatSnapshot(agent: DashboardAgentSummary) {
+    primeAgentChatEntrySnapshot(
+      createAgentSnapshotFromSummary({
+        id: agent.id,
+        name: agent.name,
+        role: agent.role,
+        status: agent.status as "enabled" | "disabled",
+        category: agent.category,
+      }),
+    );
+  }
+
   return (
     <div className="mx-auto w-full max-w-7xl p-6">
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -400,7 +416,13 @@ export default function DashboardPage() {
                       <TableCell className="text-muted-foreground">{agent.category}</TableCell>
                       <TableCell className="text-right">
                         {agent.status === "enabled" ? (
-                          <Link href={buildAgentChatRoute(agent.id)} onClick={(event) => event.stopPropagation()}>
+                          <Link
+                            href={buildAgentChatRoute(agent.id)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              primeAgentChatSnapshot(agent);
+                            }}
+                          >
                             <Button size="sm">Chat</Button>
                           </Link>
                         ) : (

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Bot, MessageSquare, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { isAgentActive, type Agent } from "@/lib/agent-api";
+import { primeAgentChatEntrySnapshot } from "@/lib/agent-chat-entry";
 import { buildAgentChatRoute, buildAgentRoute } from "@/lib/routes";
 
 interface AgentCardProps {
@@ -21,6 +22,7 @@ export function AgentCard({ agent, onDelete }: AgentCardProps) {
   function prefetchRoutes() {
     router.prefetch(agentHref);
     if (active) {
+      primeAgentChatEntrySnapshot(agent);
       router.prefetch(chatHref);
     }
   }
@@ -77,6 +79,9 @@ export function AgentCard({ agent, onDelete }: AgentCardProps) {
           onClick={(event) => {
             if (!active) event.preventDefault();
             event.stopPropagation();
+            if (active) {
+              primeAgentChatEntrySnapshot(agent);
+            }
           }}
         >
           <Button variant="default" size="sm" className="w-full gap-2" disabled={!active}>
