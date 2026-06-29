@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { createBackendAgent } from "@/lib/agent-api";
 import { getErrorMessage } from "@/lib/error-message";
-import { AUTHENTICATED_HOME } from "@/lib/routes";
+import { AUTHENTICATED_HOME, buildAgentRoute } from "@/lib/routes";
 import { peekSessionCache } from "@/lib/session-cache";
 import { buildStandardSystemPrompt } from "@/lib/standard-agent-prompt";
 import { fetchTemplates, TEMPLATE_CACHE_KEY, type AgentTemplate } from "@/lib/template-api";
@@ -107,7 +107,7 @@ export default function NewAgentPage() {
 
       setSuccessMessage("Agent created successfully.");
       toast.success("Agent created", { description: `${created.name} is ready.` });
-      router.push("/agents");
+      router.push(created.id ? buildAgentRoute(created.id) : "/agents");
     } catch (err) {
       const message = getErrorMessage(err, "Failed to create agent.");
       setError(message);

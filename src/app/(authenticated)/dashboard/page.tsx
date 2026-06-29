@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Activity, Bot, Check, CheckCircle2, Clock3, Filter, Search } from "lucide-react";
 import {
@@ -11,7 +12,7 @@ import {
 } from "@/lib/dashboard-api";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { CHATS_ROUTE } from "@/lib/routes";
+import { buildAgentChatRoute, buildAgentRoute } from "@/lib/routes";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -82,6 +83,7 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { accessToken, refreshAccessToken } = useAuth();
   const cachedDashboard = peekSessionCache<DashboardOverview>(DASHBOARD_OVERVIEW_CACHE_KEY, {
     allowExpired: true,
@@ -260,7 +262,11 @@ export default function DashboardPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredTopAgents.map((agent: DashboardAgentSummary) => (
-                    <TableRow key={agent.id}>
+                    <TableRow
+                      key={agent.id}
+                      className="cursor-pointer"
+                      onClick={() => router.push(buildAgentRoute(agent.id))}
+                    >
                       <TableCell className="px-5 font-medium text-foreground">
                         {agent.name}
                       </TableCell>
@@ -279,9 +285,7 @@ export default function DashboardPage() {
                       <TableCell className="text-muted-foreground">{agent.category}</TableCell>
                       <TableCell className="text-right">
                         {agent.status === "enabled" ? (
-                          <Link
-                            href={`${CHATS_ROUTE}?agentId=${agent.id}&name=${encodeURIComponent(agent.name)}`}
-                          >
+                          <Link href={buildAgentChatRoute(agent.id, agent.name)} onClick={(event) => event.stopPropagation()}>
                             <Button size="sm">Chat</Button>
                           </Link>
                         ) : (

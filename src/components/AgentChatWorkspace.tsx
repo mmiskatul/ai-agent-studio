@@ -23,7 +23,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { ChatInterface } from "@/components/ChatInterface";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AUTHENTICATED_HOME, CHATS_ROUTE } from "@/lib/routes";
+import { AUTHENTICATED_HOME, buildAgentChatRoute, CHATS_ROUTE } from "@/lib/routes";
 import { getChatErrorMessage, getErrorMessage } from "@/lib/error-message";
 import { peekSessionCache, primeSessionCache } from "@/lib/session-cache";
 import {
@@ -303,11 +303,10 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
     { allowExpired: true },
   );
   const initialSidebarPage = currentChatId
-    ? cachedSidebarChats?.find((page) => page.id === currentChatId) ?? null
+    ? (cachedSidebarChats?.find((page) => page.id === currentChatId) ?? null)
     : null;
   const initialAgentTargetId = routeAgentId || queryAgentId || initialSidebarPage?.agent_id || null;
-  const initialTargetAgentId =
-    initialAgentTargetId || cachedSidebarChats?.[0]?.agent_id || null;
+  const initialTargetAgentId = initialAgentTargetId || cachedSidebarChats?.[0]?.agent_id || null;
   const initialTargetChatId =
     currentChatId ||
     initialSidebarPage?.id ||
@@ -315,7 +314,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
     cachedSidebarChats?.[0]?.id ||
     null;
   const cachedWorkspaceSnapshot = initialTargetAgentId
-      ? peekSessionCache<CachedWorkspaceSnapshot>(
+    ? peekSessionCache<CachedWorkspaceSnapshot>(
         getWorkspaceSnapshotCacheKey(initialTargetAgentId, initialTargetChatId),
         { allowExpired: true },
       )
@@ -352,6 +351,17 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
   const activeAgentId = agent?.id ?? routeAgentId ?? "";
   const routeAgentName = searchParams.get("name")?.trim() || "";
   const displayAgentName = agent?.name || routeAgentName || "Agent";
+  const getRouteAgentName = useCallback(
+    (targetAgentId: string) => {
+      if (agent?.id === targetAgentId && agent.name.trim()) {
+        return agent.name;
+      }
+
+      const matchedSidebarChat = sidebarChats.find((page) => page.agent_id === targetAgentId);
+      return matchedSidebarChat?.agent_name?.trim() || undefined;
+    },
+    [agent, sidebarChats],
+  );
   const flatSidebarChats = sortPagesByRecentActivity(
     updateAgentPagesMap(
       sidebarChats,
@@ -368,11 +378,13 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
         return targetChatId ? `${CHATS_ROUTE}?chatId=${targetChatId}` : CHATS_ROUTE;
       }
 
-      return targetChatId
-        ? `/agents/${targetAgentId}/chat?chatId=${targetChatId}`
-        : `/agents/${targetAgentId}/chat`;
+      return buildAgentChatRoute(
+        targetAgentId,
+        getRouteAgentName(targetAgentId) ?? routeAgentName,
+        targetChatId,
+      );
     },
-    [routeAgentId],
+    [getRouteAgentName, routeAgentId, routeAgentName],
   );
   const derivedActiveTitle = buildTitleFromMessages(messages);
   const activePageTitle =
@@ -407,16 +419,13 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
     [],
   );
 
-  const loadSidebarChats = useCallback(
-    async () => {
-      if (!accessToken) return;
+  const loadSidebarChats = useCallback(async () => {
+    if (!accessToken) return;
 
-      const allPages = await fetchBackendAllAgentResponsePages(accessToken, refreshAccessToken);
-      setSidebarChats(sortPagesByRecentActivity(allPages));
-      return allPages;
-    },
-    [accessToken, refreshAccessToken],
-  );
+    const allPages = await fetchBackendAllAgentResponsePages(accessToken, refreshAccessToken);
+    setSidebarChats(sortPagesByRecentActivity(allPages));
+    return allPages;
+  }, [accessToken, refreshAccessToken]);
 
   const loadAgentWorkspace = useCallback(
     async (selectedAgentId: string, updateUrl = false, selectedPageId?: string | null) => {
@@ -519,7 +528,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
         setError(null);
         const allPages = await loadSidebarChats();
         const selectedSidebarPage = currentChatId
-          ? allPages?.find((page) => page.id === currentChatId) ?? null
+          ? (allPages?.find((page) => page.id === currentChatId) ?? null)
           : null;
         const targetAgentId =
           routeAgentId || queryAgentId || selectedSidebarPage?.agent_id || allPages?.[0]?.agent_id;
@@ -601,6 +610,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
   }, [
     accessToken,
     authLoading,
+    cacheChatState,
     currentChatId,
     cachedWorkspaceSnapshot,
     loadAgentWorkspace,
@@ -710,7 +720,16 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
         setIsSwitchingAgent(false);
       }
     },
-    [accessToken, activePageId, agent, buildChatRoute, cacheChatState, pages, refreshAccessToken, router],
+    [
+      accessToken,
+      activePageId,
+      agent,
+      buildChatRoute,
+      cacheChatState,
+      pages,
+      refreshAccessToken,
+      router,
+    ],
   );
 
   const handleSend = useCallback(
@@ -807,7 +826,16 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
         setIsGenerating(false);
       }
     },
-    [accessToken, activePageId, agent, buildChatRoute, pages, refreshAccessToken, router],
+    [
+      accessToken,
+      activePageId,
+      agent,
+      buildChatRoute,
+      cacheChatState,
+      pages,
+      refreshAccessToken,
+      router,
+    ],
   );
 
   const handleDeleteMessage = useCallback(

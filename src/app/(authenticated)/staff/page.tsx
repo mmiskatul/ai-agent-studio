@@ -14,7 +14,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { getErrorMessage } from "@/lib/error-message";
 import { peekSessionCache } from "@/lib/session-cache";
 import { Button } from "@/components/ui/button";
-import { CHATS_ROUTE } from "@/lib/routes";
+import { buildAgentChatRoute } from "@/lib/routes";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -213,16 +213,12 @@ export default function StaffPage() {
                     <div className="flex flex-wrap gap-2">
                       {member.assigned_agent_ids.length === 0
                         ? "No assigned agents"
-                        : member.assigned_agent_ids.map((agentId) => {
+                        : member.assigned_agent_ids.map((agentId: string) => {
                             const agent = agents.find((item) => item.id === agentId);
                             return (
                               <a
                                 key={agentId}
-                                href={
-                                  agent
-                                    ? `${CHATS_ROUTE}?agentId=${agent.id}&name=${encodeURIComponent(agent.name)}`
-                                    : "#"
-                                }
+                                href={agent ? buildAgentChatRoute(agent.id, agent.name) : "#"}
                                 className="rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground"
                               >
                                 {agent?.name || agentId}

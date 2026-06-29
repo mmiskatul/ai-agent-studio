@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bot, Check, Filter, MessageSquare, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -48,9 +49,10 @@ import {
 } from "@/components/ui/table";
 import { fetchTemplates, TEMPLATE_CACHE_KEY, type AgentTemplate } from "@/lib/template-api";
 import { buildStandardSystemPrompt } from "@/lib/standard-agent-prompt";
-import { CHATS_ROUTE } from "@/lib/routes";
+import { buildAgentChatRoute, buildAgentRoute } from "@/lib/routes";
 
 export default function AgentsPage() {
+  const router = useRouter();
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
   const cachedAgents = peekSessionCache<Agent[]>(BACKEND_AGENTS_CACHE_KEY, {
     allowExpired: true,
@@ -405,7 +407,11 @@ export default function AgentsPage() {
             </TableHeader>
             <TableBody>
               {visibleAgents.map((agent) => (
-                <TableRow key={agent.id}>
+                <TableRow
+                  key={agent.id}
+                  className="cursor-pointer"
+                  onClick={() => router.push(buildAgentRoute(agent.id))}
+                >
                   <TableCell className="px-5">
                     <div className="flex min-w-64 items-center gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
@@ -438,14 +444,18 @@ export default function AgentsPage() {
                         size="sm"
                         className="gap-1.5"
                         disabled={loadingEditId === agent.id}
-                        onClick={() => handleOpenEdit(agent.id)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleOpenEdit(agent.id);
+                        }}
                       >
                         <Pencil className="h-3.5 w-3.5" />
                         {loadingEditId === agent.id ? "Loading..." : "Edit"}
                       </Button>
                       {isAgentActive(agent) ? (
                         <Link
-                          href={`${CHATS_ROUTE}?agentId=${agent.id}&name=${encodeURIComponent(agent.name)}`}
+                          href={buildAgentChatRoute(agent.id, agent.name)}
+                          onClick={(event) => event.stopPropagation()}
                         >
                           <Button size="sm" className="gap-1.5">
                             <MessageSquare className="h-3.5 w-3.5" />
@@ -467,7 +477,10 @@ export default function AgentsPage() {
                         variant="outline"
                         size="sm"
                         className="gap-1.5 text-destructive hover:text-destructive"
-                        onClick={() => setDeleteTarget(agent)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setDeleteTarget(agent);
+                        }}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                         Delete
