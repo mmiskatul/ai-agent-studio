@@ -322,6 +322,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
       : derivedActiveTitle ||
         activePage?.memory_summary.title?.trim() ||
         activePage?.title?.trim() ||
+        agent?.name?.trim() ||
         "New chat";
 
   useEffect(() => {
