@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import {
   fetchBackendAgents,
   fetchBackendAllAgentResponsePages,
+  fetchBackendAgentResponseWorkspace,
 } from "@/lib/agent-api";
+import { primeWorkspaceSnapshot } from "@/lib/chat-workspace-cache";
 import {
   fetchDashboardCategories,
   fetchDashboardRecentActivity,
@@ -56,10 +58,33 @@ export function AuthenticatedDataPrefetch({
         fetchDashboardCategories(accessToken, refreshAccessToken),
         fetchDashboardRecentActivity(accessToken, refreshAccessToken),
         fetchBackendAgents(accessToken, refreshAccessToken),
-        fetchBackendAllAgentResponsePages(accessToken, refreshAccessToken),
         fetchTemplates(accessToken, refreshAccessToken),
         fetchProfile(accessToken, refreshAccessToken),
       ]);
+
+      void fetchBackendAllAgentResponsePages(accessToken, refreshAccessToken).then((pages) => {
+        const recentChats = pages.slice(0, 6).filter((page) => page.id && page.agent_id);
+        void Promise.allSettled(
+          recentChats.map((page) =>
+            fetchBackendAgentResponseWorkspace(
+              page.agent_id,
+              page.id,
+              accessToken,
+              refreshAccessToken,
+            ).then((workspace) => {
+              primeWorkspaceSnapshot(
+                workspace.agent,
+                workspace.pages,
+                workspace.chat_id,
+                workspace.messages,
+                workspace.memory_summary,
+                workspace.has_more_messages,
+                workspace.total_message_count,
+              );
+            }),
+          ),
+        );
+      });
     });
   }, [accessToken, refreshAccessToken, router]);
 

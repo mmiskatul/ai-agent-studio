@@ -22,9 +22,14 @@ import { useAuth } from "@/hooks/use-auth";
 import { ChatInterface } from "@/components/ChatInterface";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  getWorkspaceSnapshotCacheKey,
+  primeWorkspaceSnapshot,
+  type CachedWorkspaceSnapshot,
+} from "@/lib/chat-workspace-cache";
 import { AUTHENTICATED_HOME, buildAgentChatRoute } from "@/lib/routes";
 import { getChatErrorMessage, getErrorMessage } from "@/lib/error-message";
-import { peekSessionCache, primeSessionCache } from "@/lib/session-cache";
+import { peekSessionCache } from "@/lib/session-cache";
 
 function createOptimisticUserMessage(content: string): Message {
   const random =
@@ -228,46 +233,6 @@ type CachedChatState = {
   totalMessageCount: number;
 };
 
-type CachedWorkspaceSnapshot = {
-  agent: Agent;
-  pages: AgentResponsePage[];
-  activePageId: string | null;
-  messages: Message[];
-  memorySummary: MemorySummary;
-  hasMoreMessages: boolean;
-  totalMessageCount: number;
-};
-
-const WORKSPACE_SNAPSHOT_TTL_MS = 20_000;
-
-function getWorkspaceSnapshotCacheKey(agentId: string, chatId: string | null) {
-  return `chat-workspace:${agentId}:${chatId || "latest"}`;
-}
-
-function primeWorkspaceSnapshot(
-  agent: Agent,
-  pages: AgentResponsePage[],
-  activePageId: string | null,
-  messages: Message[],
-  memorySummary: MemorySummary,
-  hasMoreMessages: boolean,
-  totalMessageCount: number,
-) {
-  primeSessionCache(
-    getWorkspaceSnapshotCacheKey(agent.id, activePageId),
-    {
-      agent,
-      pages,
-      activePageId,
-      messages,
-      memorySummary,
-      hasMoreMessages,
-      totalMessageCount,
-    } satisfies CachedWorkspaceSnapshot,
-    WORKSPACE_SNAPSHOT_TTL_MS,
-  );
-}
-
 export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: string | null }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -322,19 +287,22 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
   );
   const activePageIdRef = useRef<string | null>(null);
   const loadedAgentIdRef = useRef<string | null>(null);
+  const agentRef = useRef<Agent | null>(cachedWorkspaceSnapshot?.agent ?? null);
+  const sidebarChatsRef = useRef<AgentResponsePage[]>(cachedSidebarChats ?? []);
   const chatStateCacheRef = useRef<Record<string, CachedChatState>>({});
+  const prefetchedWorkspaceIdsRef = useRef<Set<string>>(new Set());
   const activePage = pages.find((page) => page.id === activePageId) ?? null;
   const routeAgentName = searchParams.get("name")?.trim() || "";
   const getRouteAgentName = useCallback(
     (targetAgentId: string) => {
-      if (agent?.id === targetAgentId && agent.name.trim()) {
-        return agent.name;
+      if (agentRef.current?.id === targetAgentId && agentRef.current.name.trim()) {
+        return agentRef.current.name;
       }
 
-      const matchedSidebarChat = sidebarChats.find((page) => page.agent_id === targetAgentId);
+      const matchedSidebarChat = sidebarChatsRef.current.find((page) => page.agent_id === targetAgentId);
       return matchedSidebarChat?.agent_name?.trim() || undefined;
     },
-    [agent, sidebarChats],
+    [],
   );
   const buildChatRoute = useCallback(
     (targetAgentId: string, targetChatId?: string | null) => {
@@ -358,7 +326,12 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
   useEffect(() => {
     activePageIdRef.current = activePageId;
     loadedAgentIdRef.current = agent?.id ?? null;
+    agentRef.current = agent;
   }, [activePageId, agent?.id]);
+
+  useEffect(() => {
+    sidebarChatsRef.current = sidebarChats;
+  }, [sidebarChats]);
 
   const cacheChatState = useCallback(
     (
@@ -382,10 +355,54 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
   const loadSidebarChats = useCallback(async () => {
     if (!accessToken) return;
 
-    const allPages = await fetchBackendAllAgentResponsePages(accessToken, refreshAccessToken);
-    setSidebarChats(sortPagesByRecentActivity(allPages));
-    return allPages;
+    try {
+      const allPages = await fetchBackendAllAgentResponsePages(accessToken, refreshAccessToken);
+      setSidebarChats(sortPagesByRecentActivity(allPages));
+      return allPages;
+    } catch (error) {
+      if (sidebarChatsRef.current.length > 0) {
+        return sidebarChatsRef.current;
+      }
+      throw error;
+    }
   }, [accessToken, refreshAccessToken]);
+
+  useEffect(() => {
+    if (!accessToken || sidebarChats.length === 0) return;
+
+    const pendingChats = sidebarChats.slice(0, 4).filter((page) => {
+      if (!page.id || !page.agent_id) return false;
+      const prefetchKey = `${page.agent_id}:${page.id}`;
+      if (prefetchedWorkspaceIdsRef.current.has(prefetchKey)) {
+        return false;
+      }
+      prefetchedWorkspaceIdsRef.current.add(prefetchKey);
+      return true;
+    });
+
+    if (pendingChats.length === 0) return;
+
+    void Promise.allSettled(
+      pendingChats.map((page) =>
+        fetchBackendAgentResponseWorkspace(
+          page.agent_id,
+          page.id,
+          accessToken,
+          refreshAccessToken,
+        ).then((workspace) => {
+          primeWorkspaceSnapshot(
+            workspace.agent,
+            workspace.pages,
+            workspace.chat_id,
+            workspace.messages,
+            workspace.memory_summary,
+            workspace.has_more_messages,
+            workspace.total_message_count,
+          );
+        }),
+      ),
+    );
+  }, [accessToken, refreshAccessToken, sidebarChats]);
 
   const loadAgentWorkspace = useCallback(
     async (selectedAgentId: string, updateUrl = false, selectedPageId?: string | null) => {
@@ -423,7 +440,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
         updateAgentPagesMap(
           current,
           selectedAgentId,
-          pageList.map((page) => ({
+          pageList.map((page: AgentResponsePage) => ({
             ...page,
             agent_name: page.agent_name || agentData.name,
           })),
@@ -486,17 +503,29 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
 
       try {
         setError(null);
-        const allPages = await loadSidebarChats();
+        let allPages = sidebarChatsRef.current;
         const selectedSidebarPage = currentChatId
           ? (allPages?.find((page) => page.id === currentChatId) ?? null)
           : null;
-        const targetAgentId =
+        let targetAgentId =
           routeAgentId || queryAgentId || selectedSidebarPage?.agent_id || allPages?.[0]?.agent_id;
+
+        if (!targetAgentId) {
+          allPages = (await loadSidebarChats()) ?? [];
+          targetAgentId =
+            routeAgentId ||
+            queryAgentId ||
+            (currentChatId ? allPages?.find((page) => page.id === currentChatId)?.agent_id : null) ||
+            allPages?.[0]?.agent_id;
+        } else {
+          void loadSidebarChats().catch(() => undefined);
+        }
+
         const targetChatId =
           currentChatId ||
           selectedSidebarPage?.id ||
           pickInitialChatIdForAgent(allPages, targetAgentId ?? null) ||
-          allPages?.[0]?.id ||
+          (!routeAgentId && !queryAgentId ? allPages?.[0]?.id : null) ||
           null;
 
         if (!targetAgentId) {

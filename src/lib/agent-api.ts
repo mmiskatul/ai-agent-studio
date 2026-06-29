@@ -4,6 +4,8 @@ import { DASHBOARD_OVERVIEW_CACHE_KEY } from "@/lib/dashboard-api";
 import {
   getOrFetchSessionCached,
   invalidateSessionCache,
+  peekSessionCache,
+  primeSessionCache,
 } from "@/lib/session-cache";
 
 const fetch = backendFetch;
@@ -615,13 +617,87 @@ async function fetchBackendAgentResponseWorkspaceRequest(
   chatId: string | null,
   accessToken: string,
 ) {
-  const [agent, pages, history] = await Promise.all([
-    fetchBackendAgentRequest(agentId, accessToken),
+  const cachedWorkspaceSnapshot = peekSessionCache<AgentResponseWorkspace>(
+    `workspace-fallback:${agentId}:${chatId || "latest"}`,
+    { allowExpired: true },
+  );
+  const cachedAgent =
+    peekSessionCache<Agent>(backendAgentCacheKey(agentId), { allowExpired: true }) ??
+    peekSessionCache<Agent[]>(BACKEND_AGENTS_CACHE_KEY, { allowExpired: true })?.find(
+      (item) => item.id === agentId,
+    ) ??
+    cachedWorkspaceSnapshot?.agent ??
+    null;
+  const cachedAllPages = peekSessionCache<AgentResponsePage[]>(
+    BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
+    { allowExpired: true },
+  );
+  const cachedPages =
+    cachedWorkspaceSnapshot?.pages ??
+    cachedAllPages?.filter((page) => page.agent_id === agentId) ??
+    [];
+
+  const [agentResult, pagesResult, historyResult] = await Promise.allSettled([
+    fetchBackendAgent(agentId, accessToken),
     fetchBackendAgentResponsePagesRequest(agentId, accessToken),
     fetchBackendAgentResponseHistoryRequest(agentId, chatId, accessToken),
   ]);
 
-  return {
+  const agent =
+    agentResult.status === "fulfilled"
+      ? agentResult.value
+      : cachedAgent
+        ? normalizeAgent(cachedAgent)
+        : null;
+  const pages =
+    pagesResult.status === "fulfilled"
+      ? pagesResult.value
+      : [...cachedPages].sort((left, right) => {
+          const leftTimestamp = left.updated_at || left.created_at;
+          const rightTimestamp = right.updated_at || right.created_at;
+          return rightTimestamp.localeCompare(leftTimestamp);
+        });
+  const history =
+    historyResult.status === "fulfilled"
+      ? historyResult.value
+      : cachedWorkspaceSnapshot
+        ? {
+            chat_id: cachedWorkspaceSnapshot.chat_id,
+            memory_summary: cachedWorkspaceSnapshot.memory_summary,
+            messages: cachedWorkspaceSnapshot.messages,
+            total_message_count: cachedWorkspaceSnapshot.total_message_count,
+            has_more_messages: cachedWorkspaceSnapshot.has_more_messages,
+          }
+        : null;
+
+  if (!chatId && agent && pages.length === 0 && !history) {
+    const emptyWorkspace = {
+      agent,
+      chat_id: null,
+      memory_summary: normalizeMemorySummary(null),
+      messages: [],
+      total_message_count: 0,
+      has_more_messages: false,
+      pages,
+    } satisfies AgentResponseWorkspace;
+
+    primeSessionCache(`workspace-fallback:${agentId}:${chatId || "latest"}`, emptyWorkspace, 20_000);
+    return emptyWorkspace;
+  }
+
+  if (!agent || !history) {
+    const firstError =
+      agentResult.status === "rejected"
+        ? agentResult.reason
+        : historyResult.status === "rejected"
+          ? historyResult.reason
+          : pagesResult.status === "rejected"
+            ? pagesResult.reason
+            : new Error("Failed to load chat workspace");
+    throw firstError;
+  }
+
+  const workspace = {
     agent,
     chat_id: history.chat_id,
     memory_summary: history.memory_summary,
@@ -630,6 +706,9 @@ async function fetchBackendAgentResponseWorkspaceRequest(
     has_more_messages: history.has_more_messages,
     pages,
   } satisfies AgentResponseWorkspace;
+
+  primeSessionCache(`workspace-fallback:${agentId}:${chatId || "latest"}`, workspace, 20_000);
+  return workspace;
 }
 
 export async function fetchBackendAgentResponseWorkspace(
@@ -699,16 +778,27 @@ export async function fetchBackendAllAgentResponsePages(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return getOrFetchSessionCached(
-    BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
-    BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_TTL_MS,
-    () =>
-      withBackendAuthRetry(
-        fetchBackendAllAgentResponsePagesRequest,
-        accessToken,
-        refreshAccessToken,
-      ),
-  );
+  try {
+    return await getOrFetchSessionCached(
+      BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
+      BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_TTL_MS,
+      () =>
+        withBackendAuthRetry(
+          fetchBackendAllAgentResponsePagesRequest,
+          accessToken,
+          refreshAccessToken,
+        ),
+    );
+  } catch (error) {
+    const cachedPages = peekSessionCache<AgentResponsePage[]>(
+      BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
+      { allowExpired: true },
+    );
+    if (cachedPages?.length) {
+      return cachedPages;
+    }
+    throw error;
+  }
 }
 
 async function createBackendAgentResponsePageRequest(
