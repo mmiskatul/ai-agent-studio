@@ -201,6 +201,36 @@ function updatePageCollection(
   );
 }
 
+function upsertPageCollection(
+  pages: AgentResponsePage[],
+  agent: Agent,
+  pageId: string | null,
+  memorySummary: MemorySummary,
+  messageCount: number,
+) {
+  if (!pageId) return pages;
+
+  const updatedPages = updatePageCollection(pages, pageId, memorySummary, messageCount);
+  if (updatedPages.some((page) => page.id === pageId)) {
+    return updatedPages;
+  }
+
+  const timestamp = new Date().toISOString();
+  return sortPagesByRecentActivity([
+    {
+      id: pageId,
+      agent_id: agent.id,
+      agent_name: agent.name,
+      title: memorySummary.title?.trim() || agent.name,
+      memory_summary: memorySummary,
+      message_count: messageCount,
+      created_at: timestamp,
+      updated_at: timestamp,
+    },
+    ...pages,
+  ]);
+}
+
 function sortPagesByRecentActivity(pages: AgentResponsePage[]) {
   return [...pages].sort((left, right) => {
     const leftTimestamp = left.updated_at || left.created_at;
@@ -295,6 +325,10 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
   const chatStateCacheRef = useRef<Record<string, CachedChatState>>({});
   const prefetchedWorkspaceIdsRef = useRef<Set<string>>(new Set());
   const activePage = pages.find((page) => page.id === activePageId) ?? null;
+  const replaceChatUrlState = useCallback((targetAgentId: string, targetChatId?: string | null) => {
+    if (typeof window === "undefined") return;
+    window.history.replaceState({}, "", buildAgentChatRoute(targetAgentId, targetChatId));
+  }, []);
   const buildChatRoute = useCallback(
     (targetAgentId: string, targetChatId?: string | null) => {
       return buildAgentChatRoute(targetAgentId, targetChatId);
@@ -644,27 +678,20 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
           refreshAccessToken,
         );
         const resolvedChatId = response.chat_id || activePageId;
-        const history = await fetchBackendAgentResponseHistory(
-          agent.id,
-          resolvedChatId,
-          accessToken,
-          refreshAccessToken,
+        const nextPageId = resolvedChatId;
+        const nextMemorySummary = response.memory_summary;
+        const resolvedUserMessage = {
+          ...optimisticMessage,
+          chat_id: resolvedChatId || "pending",
+        };
+        const assistantMessage = createLocalAssistantMessage(
+          resolvedChatId || "pending",
+          response.content,
         );
-        const fallbackMessages = response.local_fallback
-          ? [
-              {
-                ...optimisticMessage,
-                chat_id: resolvedChatId || "pending",
-              },
-              createLocalAssistantMessage(resolvedChatId || "pending", response.content),
-            ]
-          : null;
-        const nextPageId = history.chat_id || resolvedChatId;
-        const nextMemorySummary = history.memory_summary || response.memory_summary;
-        const nextMessages =
-          fallbackMessages && history.messages.length === 0 ? fallbackMessages : history.messages;
-        const nextPages = updatePageCollection(
+        const nextMessages = [...messages, resolvedUserMessage, assistantMessage];
+        const nextPages = upsertPageCollection(
           pages,
+          agent,
           nextPageId,
           nextMemorySummary,
           nextMessages.length,
@@ -701,7 +728,73 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
           false,
           nextMessages.length,
         );
-        router.replace(buildChatRoute(agent.id, nextPageId));
+        if (nextPageId) {
+          replaceChatUrlState(agent.id, nextPageId);
+        }
+
+        void fetchBackendAgentResponseHistory(
+          agent.id,
+          nextPageId,
+          accessToken,
+          refreshAccessToken,
+        )
+          .then((history) => {
+            if (agentRef.current?.id !== agent.id) return;
+            if (
+              activePageIdRef.current &&
+              history.chat_id &&
+              activePageIdRef.current !== history.chat_id
+            ) {
+              return;
+            }
+
+            const syncedPages = upsertPageCollection(
+              nextPages,
+              agent,
+              history.chat_id,
+              history.memory_summary,
+              history.messages.length,
+            );
+            setSidebarChats((current) =>
+              updateAgentPagesMap(
+                current,
+                agent.id,
+                syncedPages.map((page) => ({
+                  ...page,
+                  agent_name: page.agent_name || agent.name,
+                })),
+              ),
+            );
+            applyChatState(
+              setPages,
+              setActivePageId,
+              setMessages,
+              setMemorySummary,
+              syncedPages,
+              history.chat_id,
+              history.messages,
+              history.memory_summary,
+            );
+            setHasMoreMessages(history.has_more_messages);
+            setTotalMessageCount(history.total_message_count);
+            cacheChatState(
+              history.chat_id,
+              history.messages,
+              history.memory_summary,
+              history.has_more_messages,
+              history.total_message_count,
+            );
+            primeWorkspaceSnapshot(
+              agent,
+              syncedPages,
+              history.chat_id,
+              history.messages,
+              history.memory_summary,
+              history.has_more_messages,
+              history.total_message_count,
+            );
+          })
+          .catch(() => undefined);
       } catch (err) {
         console.error("Failed to generate agent response:", err);
         setMessages((prev) => prev.filter((message) => message.id !== optimisticMessage.id));
@@ -716,11 +809,10 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
       accessToken,
       activePageId,
       agent,
-      buildChatRoute,
       cacheChatState,
       pages,
+      replaceChatUrlState,
       refreshAccessToken,
-      router,
     ],
   );
 
@@ -783,7 +875,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
           history.total_message_count,
         );
         if (history.chat_id) {
-          router.replace(buildChatRoute(agent.id, history.chat_id));
+          replaceChatUrlState(agent.id, history.chat_id);
         }
       } catch (err) {
         console.error("Failed to delete agent response message:", err);
@@ -794,7 +886,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
         setMessageActionId(null);
       }
     },
-    [accessToken, agent, buildChatRoute, cacheChatState, pages, refreshAccessToken, router],
+    [accessToken, agent, cacheChatState, pages, refreshAccessToken, replaceChatUrlState],
   );
 
   const handleEditMessage = useCallback(
@@ -857,7 +949,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
           history.total_message_count,
         );
         if (history.chat_id) {
-          router.replace(buildChatRoute(agent.id, history.chat_id));
+          replaceChatUrlState(agent.id, history.chat_id);
         }
       } catch (err) {
         console.error("Failed to edit agent response message:", err);
@@ -868,7 +960,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
         setMessageActionId(null);
       }
     },
-    [accessToken, agent, buildChatRoute, cacheChatState, pages, refreshAccessToken, router],
+    [accessToken, agent, cacheChatState, pages, refreshAccessToken, replaceChatUrlState],
   );
 
   if (!loading && !agent) {
