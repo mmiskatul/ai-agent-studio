@@ -6,12 +6,15 @@ import { useEffect, useRef, useState } from "react";
 import { Activity, Bot, Check, CheckCircle2, Clock3, Filter, Search } from "lucide-react";
 import {
   DASHBOARD_CATEGORIES_CACHE_KEY,
+  DASHBOARD_OVERVIEW_CACHE_KEY,
   DASHBOARD_STATS_CACHE_KEY,
   DASHBOARD_TOP_AGENTS_CACHE_KEY,
   fetchDashboardCategories,
+  fetchDashboardOverview,
   fetchDashboardStats,
   fetchDashboardTopAgents,
   type DashboardCategorySummary,
+  type DashboardOverview,
   type DashboardStats,
   type DashboardAgentSummary,
 } from "@/lib/dashboard-api";
@@ -90,6 +93,9 @@ export default function DashboardPage() {
   const cachedStats = peekSessionCache<DashboardStats>(DASHBOARD_STATS_CACHE_KEY, {
     allowExpired: true,
   });
+  const cachedOverview = peekSessionCache<DashboardOverview>(DASHBOARD_OVERVIEW_CACHE_KEY, {
+    allowExpired: true,
+  });
   const cachedTopAgents = peekSessionCache<DashboardAgentSummary[]>(DASHBOARD_TOP_AGENTS_CACHE_KEY, {
     allowExpired: true,
   });
@@ -105,6 +111,9 @@ export default function DashboardPage() {
   );
   const [loadingStats, setLoadingStats] = useState(!cachedStats);
   const [loadingTopAgents, setLoadingTopAgents] = useState(!cachedTopAgents);
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const [topAgentsError, setTopAgentsError] = useState<string | null>(null);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
@@ -123,14 +132,34 @@ export default function DashboardPage() {
         setLoadingStats(true);
       }
 
+      let overviewFallbackRequest: Promise<DashboardOverview> | null = null;
+      const loadOverviewFallback = () => {
+        if (!overviewFallbackRequest) {
+          overviewFallbackRequest = fetchDashboardOverview(accessToken, refreshAccessToken);
+        }
+        return overviewFallbackRequest;
+      };
+
       void fetchDashboardStats(accessToken, refreshAccessToken)
         .then((data) => {
           setStatsData(data);
-          setError(null);
+          setStatsError(null);
         })
-        .catch((err) => {
+        .catch(async (err) => {
           console.error("Failed to load dashboard stats:", err);
-          setError(err instanceof Error ? err.message : "Failed to load dashboard");
+          try {
+            const overview = await loadOverviewFallback();
+            setStatsData(overview.stats);
+            setTopAgents((current) => (current.length > 0 ? current : overview.top_agents));
+            setCategoriesData((current) => (current.length > 0 ? current : overview.categories));
+            setStatsError(null);
+          } catch (fallbackErr) {
+            const message =
+              err instanceof Error ? err.message : "Failed to load dashboard stats";
+            console.error("Failed to load dashboard overview fallback:", fallbackErr);
+            setStatsError(message);
+            setError(message);
+          }
         })
         .finally(() => {
           setLoadingStats(false);
@@ -139,11 +168,22 @@ export default function DashboardPage() {
       void fetchDashboardTopAgents(accessToken, refreshAccessToken)
         .then((data) => {
           setTopAgents(data);
-          setError(null);
+          setTopAgentsError(null);
         })
-        .catch((err) => {
+        .catch(async (err) => {
           console.error("Failed to load dashboard top agents:", err);
-          setError((current) => current ?? (err instanceof Error ? err.message : "Failed to load dashboard"));
+          try {
+            const overview = await loadOverviewFallback();
+            setTopAgents(overview.top_agents);
+            setCategoriesData((current) => (current.length > 0 ? current : overview.categories));
+            setTopAgentsError(null);
+          } catch (fallbackErr) {
+            const message =
+              err instanceof Error ? err.message : "Failed to load dashboard agents";
+            console.error("Failed to load dashboard overview fallback:", fallbackErr);
+            setTopAgentsError(message);
+            setError((current) => current ?? message);
+          }
         })
         .finally(() => {
           setLoadingTopAgents(false);
@@ -152,9 +192,21 @@ export default function DashboardPage() {
       void fetchDashboardCategories(accessToken, refreshAccessToken)
         .then((data) => {
           setCategoriesData(data);
+          setCategoriesError(null);
         })
-        .catch((err) => {
+        .catch(async (err) => {
           console.error("Failed to load dashboard categories:", err);
+          try {
+            const overview = await loadOverviewFallback();
+            setCategoriesData(overview.categories);
+            setCategoriesError(null);
+          } catch (fallbackErr) {
+            const message =
+              err instanceof Error ? err.message : "Failed to load dashboard categories";
+            console.error("Failed to load dashboard overview fallback:", fallbackErr);
+            setCategoriesError(message);
+            setError((current) => current ?? message);
+          }
         });
     }
 
@@ -262,20 +314,27 @@ export default function DashboardPage() {
         {loadingStats ? (
           <DashboardStatsSkeleton />
         ) : (
-          <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {stats.map((stat) => (
-              <div key={stat.label} className="agent-card flex items-center gap-4 p-5">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                  <stat.icon className="h-5 w-5 text-primary" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
-                  <p className="mt-1 text-2xl font-bold text-foreground">{stat.value}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{stat.description}</p>
-                </div>
+          <>
+            {statsError ? (
+              <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+                Stats failed to load: {statsError}
               </div>
-            ))}
-          </div>
+            ) : null}
+            <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {stats.map((stat) => (
+                <div key={stat.label} className="agent-card flex items-center gap-4 p-5">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                    <stat.icon className="h-5 w-5 text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
+                    <p className="mt-1 text-2xl font-bold text-foreground">{stat.value}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{stat.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
         {loadingTopAgents ? (
@@ -290,6 +349,16 @@ export default function DashboardPage() {
                 </p>
               </div>
             </div>
+            {topAgentsError ? (
+              <div className="border-b border-destructive/20 bg-destructive/10 px-5 py-3 text-sm font-medium text-destructive">
+                Top agents failed to load: {topAgentsError}
+              </div>
+            ) : null}
+            {categoriesError ? (
+              <div className="border-b border-destructive/20 bg-destructive/10 px-5 py-3 text-sm font-medium text-destructive">
+                Categories failed to load: {categoriesError}
+              </div>
+            ) : null}
 
             {filteredTopAgents.length === 0 ? (
               <div className="px-5 py-10 text-center text-sm text-muted-foreground">
