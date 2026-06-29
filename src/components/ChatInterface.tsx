@@ -145,6 +145,8 @@ export function ChatInterface({
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previousMessageCountRef = useRef(messages.length);
+  const previousStreamingRef = useRef(Boolean(streamingContent));
   const welcomeMessage =
     agent.welcome_message?.trim() ||
     `Hi, I'm ${agent.name}. I can help with ${
@@ -152,8 +154,15 @@ export function ChatInterface({
     }. Share what you need, and I'll guide you through the next best steps.`;
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingContent]);
+    const didAppendMessage = messages.length > previousMessageCountRef.current;
+    const isStreamingNow = Boolean(streamingContent);
+    const startedStreaming = isStreamingNow && !previousStreamingRef.current;
+    const behavior = didAppendMessage || startedStreaming ? "smooth" : "auto";
+
+    bottomRef.current?.scrollIntoView({ behavior });
+    previousMessageCountRef.current = messages.length;
+    previousStreamingRef.current = isStreamingNow;
+  }, [messages.length, streamingContent]);
 
   useEffect(() => {
     const textarea = inputRef.current;

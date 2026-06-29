@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import { Bot, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -250,6 +250,13 @@ function updateAgentPagesMap(
   ]);
 }
 
+function withResolvedAgentName(pages: AgentResponsePage[], agentName: string) {
+  return pages.map((page) => ({
+    ...page,
+    agent_name: page.agent_name || agentName,
+  }));
+}
+
 function pickInitialChatIdForAgent(
   pages: AgentResponsePage[] | null | undefined,
   agentId: string | null,
@@ -449,23 +456,17 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
       }
 
       const nextPageId = workspace.chat_id || pageList[0]?.id || null;
+      const resolvedPageList = withResolvedAgentName(pageList, agentData.name);
       setAgent(agentData);
       setSidebarChats((current) =>
-        updateAgentPagesMap(
-          current,
-          selectedAgentId,
-          pageList.map((page: AgentResponsePage) => ({
-            ...page,
-            agent_name: page.agent_name || agentData.name,
-          })),
-        ),
+        updateAgentPagesMap(current, selectedAgentId, resolvedPageList),
       );
       applyChatState(
         setPages,
         setActivePageId,
         setMessages,
         setMemorySummary,
-        pageList,
+        resolvedPageList,
         nextPageId,
         workspace.messages,
         workspace.memory_summary,
@@ -558,17 +559,14 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
           { allowExpired: true },
         );
         if (resolvedWorkspaceSnapshot) {
+          const resolvedPages = withResolvedAgentName(
+            resolvedWorkspaceSnapshot.pages,
+            resolvedWorkspaceSnapshot.agent.name,
+          );
           setAgent(resolvedWorkspaceSnapshot.agent);
-          setPages(resolvedWorkspaceSnapshot.pages);
+          setPages(resolvedPages);
           setSidebarChats((current) =>
-            updateAgentPagesMap(
-              current,
-              targetAgentId,
-              resolvedWorkspaceSnapshot.pages.map((page) => ({
-                ...page,
-                agent_name: page.agent_name || resolvedWorkspaceSnapshot.agent.name,
-              })),
-            ),
+            updateAgentPagesMap(current, targetAgentId, resolvedPages),
           );
           setActivePageId(resolvedWorkspaceSnapshot.activePageId);
           setMessages(resolvedWorkspaceSnapshot.messages);
@@ -696,22 +694,16 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
           nextMemorySummary,
           nextMessages.length,
         );
+        const resolvedNextPages = withResolvedAgentName(nextPages, agent.name);
         setSidebarChats((current) =>
-          updateAgentPagesMap(
-            current,
-            agent.id,
-            nextPages.map((page) => ({
-              ...page,
-              agent_name: page.agent_name || agent.name,
-            })),
-          ),
+          updateAgentPagesMap(current, agent.id, resolvedNextPages),
         );
         applyChatState(
           setPages,
           setActivePageId,
           setMessages,
           setMemorySummary,
-          nextPages,
+          resolvedNextPages,
           nextPageId,
           nextMessages,
           nextMemorySummary,
@@ -721,7 +713,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
         cacheChatState(nextPageId, nextMessages, nextMemorySummary, false, nextMessages.length);
         primeWorkspaceSnapshot(
           agent,
-          nextPages,
+          resolvedNextPages,
           nextPageId,
           nextMessages,
           nextMemorySummary,
@@ -755,44 +747,40 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
               history.memory_summary,
               history.messages.length,
             );
-            setSidebarChats((current) =>
-              updateAgentPagesMap(
-                current,
-                agent.id,
-                syncedPages.map((page) => ({
-                  ...page,
-                  agent_name: page.agent_name || agent.name,
-                })),
-              ),
-            );
-            applyChatState(
-              setPages,
-              setActivePageId,
-              setMessages,
-              setMemorySummary,
-              syncedPages,
-              history.chat_id,
-              history.messages,
-              history.memory_summary,
-            );
-            setHasMoreMessages(history.has_more_messages);
-            setTotalMessageCount(history.total_message_count);
-            cacheChatState(
-              history.chat_id,
-              history.messages,
-              history.memory_summary,
-              history.has_more_messages,
-              history.total_message_count,
-            );
-            primeWorkspaceSnapshot(
-              agent,
-              syncedPages,
-              history.chat_id,
-              history.messages,
-              history.memory_summary,
-              history.has_more_messages,
-              history.total_message_count,
-            );
+            const resolvedSyncedPages = withResolvedAgentName(syncedPages, agent.name);
+            startTransition(() => {
+              setSidebarChats((current) =>
+                updateAgentPagesMap(current, agent.id, resolvedSyncedPages),
+              );
+              applyChatState(
+                setPages,
+                setActivePageId,
+                setMessages,
+                setMemorySummary,
+                resolvedSyncedPages,
+                history.chat_id,
+                history.messages,
+                history.memory_summary,
+              );
+              setHasMoreMessages(history.has_more_messages);
+              setTotalMessageCount(history.total_message_count);
+              cacheChatState(
+                history.chat_id,
+                history.messages,
+                history.memory_summary,
+                history.has_more_messages,
+                history.total_message_count,
+              );
+              primeWorkspaceSnapshot(
+                agent,
+                resolvedSyncedPages,
+                history.chat_id,
+                history.messages,
+                history.memory_summary,
+                history.has_more_messages,
+                history.total_message_count,
+              );
+            });
           })
           .catch(() => undefined);
       } catch (err) {
@@ -836,22 +824,16 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
           history.memory_summary,
           history.messages.length,
         );
+        const resolvedNextPages = withResolvedAgentName(nextPages, agent.name);
         setSidebarChats((current) =>
-          updateAgentPagesMap(
-            current,
-            agent.id,
-            nextPages.map((page) => ({
-              ...page,
-              agent_name: page.agent_name || agent.name,
-            })),
-          ),
+          updateAgentPagesMap(current, agent.id, resolvedNextPages),
         );
         applyChatState(
           setPages,
           setActivePageId,
           setMessages,
           setMemorySummary,
-          nextPages,
+          resolvedNextPages,
           history.chat_id,
           history.messages,
           history.memory_summary,
@@ -867,7 +849,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
         );
         primeWorkspaceSnapshot(
           agent,
-          nextPages,
+          resolvedNextPages,
           history.chat_id,
           history.messages,
           history.memory_summary,
@@ -910,22 +892,16 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
           history.memory_summary,
           history.messages.length,
         );
+        const resolvedNextPages = withResolvedAgentName(nextPages, agent.name);
         setSidebarChats((current) =>
-          updateAgentPagesMap(
-            current,
-            agent.id,
-            nextPages.map((page) => ({
-              ...page,
-              agent_name: page.agent_name || agent.name,
-            })),
-          ),
+          updateAgentPagesMap(current, agent.id, resolvedNextPages),
         );
         applyChatState(
           setPages,
           setActivePageId,
           setMessages,
           setMemorySummary,
-          nextPages,
+          resolvedNextPages,
           history.chat_id,
           history.messages,
           history.memory_summary,
@@ -941,7 +917,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
         );
         primeWorkspaceSnapshot(
           agent,
-          nextPages,
+          resolvedNextPages,
           history.chat_id,
           history.messages,
           history.memory_summary,
