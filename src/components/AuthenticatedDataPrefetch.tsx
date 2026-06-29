@@ -14,24 +14,19 @@ import {
   fetchDashboardStats,
   fetchDashboardTopAgents,
 } from "@/lib/dashboard-api";
+import {
+  CHAT_WORKSPACE_PRELOAD_DELAY_MS,
+  CHAT_WORKSPACE_PRELOAD_LIMIT,
+  PRELOAD_ROUTES,
+  scheduleDelayedTask,
+  scheduleIdleTask,
+} from "@/lib/frontend-preload";
 import { fetchProfile } from "@/lib/profile-api";
 import { fetchTemplates } from "@/lib/template-api";
 
 interface AuthenticatedDataPrefetchProps {
   accessToken: string | null;
   refreshAccessToken?: () => Promise<string | null>;
-}
-
-const ROUTES_TO_PREFETCH = ["/dashboard", "/agents", "/agents/new", "/profile"];
-
-function scheduleBackgroundWork(work: () => void) {
-  if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-    const runWhenIdle = window.requestIdleCallback as (callback: () => void) => number;
-    runWhenIdle(work);
-    return;
-  }
-
-  globalThis.setTimeout(work, 0);
 }
 
 export function AuthenticatedDataPrefetch({
@@ -46,13 +41,13 @@ export function AuthenticatedDataPrefetch({
 
     warmedTokenRef.current = accessToken;
 
-    for (const route of ROUTES_TO_PREFETCH) {
+    for (const route of PRELOAD_ROUTES) {
       router.prefetch(route);
     }
 
     void fetchDashboardStats(accessToken, refreshAccessToken);
 
-    scheduleBackgroundWork(() => {
+    const cancelIdlePrefetch = scheduleIdleTask(() => {
       void Promise.allSettled([
         fetchDashboardTopAgents(accessToken, refreshAccessToken),
         fetchDashboardCategories(accessToken, refreshAccessToken),
@@ -61,31 +56,43 @@ export function AuthenticatedDataPrefetch({
         fetchTemplates(accessToken, refreshAccessToken),
         fetchProfile(accessToken, refreshAccessToken),
       ]);
-
-      void fetchBackendAllAgentResponsePages(accessToken, refreshAccessToken).then((pages) => {
-        const recentChats = pages.slice(0, 6).filter((page) => page.id && page.agent_id);
-        void Promise.allSettled(
-          recentChats.map((page) =>
-            fetchBackendAgentResponseWorkspace(
-              page.agent_id,
-              page.id,
-              accessToken,
-              refreshAccessToken,
-            ).then((workspace) => {
-              primeWorkspaceSnapshot(
-                workspace.agent,
-                workspace.pages,
-                workspace.chat_id,
-                workspace.messages,
-                workspace.memory_summary,
-                workspace.has_more_messages,
-                workspace.total_message_count,
-              );
-            }),
-          ),
-        );
-      });
     });
+
+    const cancelChatWarmup = scheduleDelayedTask(CHAT_WORKSPACE_PRELOAD_DELAY_MS, () => {
+      void fetchBackendAllAgentResponsePages(accessToken, refreshAccessToken)
+        .then((pages) => {
+          const recentChats = pages
+            .filter((page) => page.id && page.agent_id)
+            .slice(0, CHAT_WORKSPACE_PRELOAD_LIMIT);
+
+          return Promise.allSettled(
+            recentChats.map((page) =>
+              fetchBackendAgentResponseWorkspace(
+                page.agent_id,
+                page.id,
+                accessToken,
+                refreshAccessToken,
+              ).then((workspace) => {
+                primeWorkspaceSnapshot(
+                  workspace.agent,
+                  workspace.pages,
+                  workspace.chat_id,
+                  workspace.messages,
+                  workspace.memory_summary,
+                  workspace.has_more_messages,
+                  workspace.total_message_count,
+                );
+              }),
+            ),
+          );
+        })
+        .catch(() => undefined);
+    });
+
+    return () => {
+      cancelIdlePrefetch?.();
+      cancelChatWarmup?.();
+    };
   }, [accessToken, refreshAccessToken, router]);
 
   return null;

@@ -29,6 +29,7 @@ import {
 } from "@/lib/chat-workspace-cache";
 import { AUTHENTICATED_HOME, buildAgentChatRoute } from "@/lib/routes";
 import { getChatErrorMessage, getErrorMessage } from "@/lib/error-message";
+import { CHAT_WORKSPACE_PRELOAD_LIMIT } from "@/lib/frontend-preload";
 import { peekSessionCache } from "@/lib/session-cache";
 
 function createOptimisticUserMessage(content: string): Message {
@@ -370,7 +371,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
   useEffect(() => {
     if (!accessToken || sidebarChats.length === 0) return;
 
-    const pendingChats = sidebarChats.slice(0, 4).filter((page) => {
+    const pendingChats = sidebarChats.slice(0, CHAT_WORKSPACE_PRELOAD_LIMIT).filter((page) => {
       if (!page.id || !page.agent_id) return false;
       const prefetchKey = `${page.agent_id}:${page.id}`;
       if (prefetchedWorkspaceIdsRef.current.has(prefetchKey)) {
