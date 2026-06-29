@@ -301,15 +301,7 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
     },
     [],
   );
-  const derivedActiveTitle = buildTitleFromMessages(messages);
-  const activePageTitle =
-    memorySummary.title?.trim() && !isWeakChatTitle(memorySummary.title)
-      ? memorySummary.title.trim()
-      : derivedActiveTitle ||
-        activePage?.memory_summary.title?.trim() ||
-        activePage?.title?.trim() ||
-        agent?.name?.trim() ||
-        "New chat";
+  const activePageTitle = agent?.name?.trim() || "Agent chat";
 
   useEffect(() => {
     activePageIdRef.current = activePageId;
