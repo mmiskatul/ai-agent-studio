@@ -56,6 +56,25 @@ export function invalidateSessionCache(keys: string | string[]) {
   }
 }
 
+export function clearAllSessionCache() {
+  memoryCache.clear();
+  pendingCache.clear();
+
+  if (!canUseSessionStorage()) return;
+
+  const keysToRemove: string[] = [];
+  for (let index = 0; index < window.sessionStorage.length; index += 1) {
+    const key = window.sessionStorage.key(index);
+    if (key?.startsWith(CACHE_PREFIX)) {
+      keysToRemove.push(key);
+    }
+  }
+
+  for (const key of keysToRemove) {
+    window.sessionStorage.removeItem(key);
+  }
+}
+
 export function primeSessionCache<T>(key: string, value: T, ttlMs: number) {
   const expiresAt = Date.now() + ttlMs;
   memoryCache.set(key, { value, expiresAt });

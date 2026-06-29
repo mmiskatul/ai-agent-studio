@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +31,9 @@ export function TopBar() {
               aria-label="Open profile menu"
             >
               <Avatar className="h-9 w-9 border border-border">
+                {user?.profile_image ? (
+                  <AvatarImage src={user.profile_image} alt={user.email ?? "Profile"} />
+                ) : null}
                 <AvatarFallback className="bg-primary text-sm font-bold text-primary-foreground">
                   {getProfileInitial(user?.email)}
                 </AvatarFallback>

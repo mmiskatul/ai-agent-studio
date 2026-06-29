@@ -12,6 +12,7 @@ import {
 } from "react";
 import { backendFetch } from "@/lib/backend-fetch";
 import { getApiErrorMessage } from "@/lib/error-message";
+import { clearAllSessionCache } from "@/lib/session-cache";
 
 export interface AuthUser {
   id: string;
@@ -124,6 +125,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const storeTokenResponse = useCallback((response: TokenResponse) => {
+    const existingSession = readStoredSession();
+    const isDifferentUser =
+      existingSession?.user?.id && existingSession.user.id !== response.user.id;
+    if (isDifferentUser) {
+      clearAllSessionCache();
+    }
+
     const session = {
       user: response.user,
       accessToken: response.access_token,
@@ -138,6 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const clearSessionState = useCallback(() => {
     clearStoredSession();
+    clearAllSessionCache();
     setUser(null);
     setAccessToken(null);
     setSessionToken(null);
