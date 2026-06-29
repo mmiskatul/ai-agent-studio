@@ -5,9 +5,14 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Activity, Bot, Check, CheckCircle2, Clock3, Filter, Search } from "lucide-react";
 import {
-  DASHBOARD_OVERVIEW_CACHE_KEY,
-  fetchDashboardOverview,
-  type DashboardOverview,
+  DASHBOARD_CATEGORIES_CACHE_KEY,
+  DASHBOARD_STATS_CACHE_KEY,
+  DASHBOARD_TOP_AGENTS_CACHE_KEY,
+  fetchDashboardCategories,
+  fetchDashboardStats,
+  fetchDashboardTopAgents,
+  type DashboardCategorySummary,
+  type DashboardStats,
   type DashboardAgentSummary,
 } from "@/lib/dashboard-api";
 import { useAuth } from "@/hooks/use-auth";
@@ -33,64 +38,73 @@ import {
 } from "@/components/ui/table";
 import { peekSessionCache } from "@/lib/session-cache";
 
-const emptyDashboard: DashboardOverview = {
-  stats: {
-    total_agents: 0,
-    active_agents: 0,
-    inactive_agents: 0,
-    recently_updated_agents: 0,
-    total_chats: 0,
-    total_messages: 0,
-    queries_30d: 0,
-  },
-  top_agents: [],
-  categories: [],
-  recent_activity: [],
+const emptyStats: DashboardStats = {
+  total_agents: 0,
+  active_agents: 0,
+  inactive_agents: 0,
+  recently_updated_agents: 0,
+  total_chats: 0,
+  total_messages: 0,
+  queries_30d: 0,
 };
 
-function DashboardSkeleton() {
+function DashboardStatsSkeleton() {
   return (
-    <>
-      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, index) => (
-          <div key={index} className="agent-card flex items-center gap-4 p-5">
-            <Skeleton className="h-12 w-12 rounded-lg" />
+    <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div key={index} className="agent-card flex items-center gap-4 p-5">
+          <Skeleton className="h-12 w-12 rounded-lg" />
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-7 w-16" />
+            <Skeleton className="h-3 w-28" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DashboardAgentsSkeleton() {
+  return (
+    <div className="agent-card mb-8 overflow-hidden p-5">
+      <div className="space-y-4">
+        <Skeleton className="h-6 w-40" />
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div key={index} className="flex items-center justify-between gap-4">
             <div className="space-y-2">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-7 w-16" />
+              <Skeleton className="h-4 w-44" />
               <Skeleton className="h-3 w-28" />
             </div>
+            <Skeleton className="h-8 w-16 rounded-md" />
           </div>
         ))}
       </div>
-
-      <div className="agent-card mb-8 overflow-hidden p-5">
-        <div className="space-y-4">
-          <Skeleton className="h-6 w-40" />
-          {Array.from({ length: 5 }).map((_, index) => (
-            <div key={index} className="flex items-center justify-between gap-4">
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-44" />
-                <Skeleton className="h-3 w-28" />
-              </div>
-              <Skeleton className="h-8 w-16 rounded-md" />
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
+    </div>
   );
 }
 
 export default function DashboardPage() {
   const router = useRouter();
   const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
-  const cachedDashboard = peekSessionCache<DashboardOverview>(DASHBOARD_OVERVIEW_CACHE_KEY, {
+  const cachedStats = peekSessionCache<DashboardStats>(DASHBOARD_STATS_CACHE_KEY, {
     allowExpired: true,
   });
-  const initialDashboardRef = useRef(cachedDashboard);
-  const [dashboard, setDashboard] = useState<DashboardOverview>(cachedDashboard ?? emptyDashboard);
-  const [loading, setLoading] = useState(!cachedDashboard);
+  const cachedTopAgents = peekSessionCache<DashboardAgentSummary[]>(DASHBOARD_TOP_AGENTS_CACHE_KEY, {
+    allowExpired: true,
+  });
+  const cachedCategories = peekSessionCache<DashboardCategorySummary[]>(
+    DASHBOARD_CATEGORIES_CACHE_KEY,
+    { allowExpired: true },
+  );
+  const initialStatsRef = useRef(cachedStats);
+  const [statsData, setStatsData] = useState<DashboardStats>(cachedStats ?? emptyStats);
+  const [topAgents, setTopAgents] = useState<DashboardAgentSummary[]>(cachedTopAgents ?? []);
+  const [categoriesData, setCategoriesData] = useState<DashboardCategorySummary[]>(
+    cachedCategories ?? [],
+  );
+  const [loadingStats, setLoadingStats] = useState(!cachedStats);
+  const [loadingTopAgents, setLoadingTopAgents] = useState(!cachedTopAgents);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
@@ -98,32 +112,57 @@ export default function DashboardPage() {
   useEffect(() => {
     if (authLoading) return;
 
-    async function loadDashboard() {
+    async function loadDashboardSections() {
       if (!accessToken) {
-        setLoading(false);
+        setLoadingStats(false);
+        setLoadingTopAgents(false);
         return;
       }
 
-      if (!initialDashboardRef.current) {
-        setLoading(true);
+      if (!initialStatsRef.current) {
+        setLoadingStats(true);
       }
-      try {
-        const data = await fetchDashboardOverview(accessToken, refreshAccessToken);
-        setDashboard(data);
-        setError(null);
-      } catch (err) {
-        console.error("Failed to load dashboard:", err);
-        setError(err instanceof Error ? err.message : "Failed to load dashboard");
-      } finally {
-        setLoading(false);
-      }
+
+      void fetchDashboardStats(accessToken, refreshAccessToken)
+        .then((data) => {
+          setStatsData(data);
+          setError(null);
+        })
+        .catch((err) => {
+          console.error("Failed to load dashboard stats:", err);
+          setError(err instanceof Error ? err.message : "Failed to load dashboard");
+        })
+        .finally(() => {
+          setLoadingStats(false);
+        });
+
+      void fetchDashboardTopAgents(accessToken, refreshAccessToken)
+        .then((data) => {
+          setTopAgents(data);
+          setError(null);
+        })
+        .catch((err) => {
+          console.error("Failed to load dashboard top agents:", err);
+          setError((current) => current ?? (err instanceof Error ? err.message : "Failed to load dashboard"));
+        })
+        .finally(() => {
+          setLoadingTopAgents(false);
+        });
+
+      void fetchDashboardCategories(accessToken, refreshAccessToken)
+        .then((data) => {
+          setCategoriesData(data);
+        })
+        .catch((err) => {
+          console.error("Failed to load dashboard categories:", err);
+        });
     }
 
-    loadDashboard();
+    loadDashboardSections();
   }, [accessToken, authLoading, refreshAccessToken]);
 
-  const categories = ["All", ...dashboard.categories.map((item) => item.name)];
-  const filteredTopAgents = dashboard.top_agents.filter((agent) => {
+  const categories = ["All", ...categoriesData.map((item) => item.name)];
+  const filteredTopAgents = topAgents.filter((agent) => {
     const query = search.toLowerCase();
     const matchesSearch =
       agent.name.toLowerCase().includes(query) ||
@@ -136,25 +175,25 @@ export default function DashboardPage() {
   const stats = [
     {
       label: "Total Agents",
-      value: dashboard.stats.total_agents,
+      value: statsData.total_agents,
       description: "All agents created",
       icon: Bot,
     },
     {
       label: "Active Agents",
-      value: dashboard.stats.active_agents,
+      value: statsData.active_agents,
       description: "Ready for chat",
       icon: CheckCircle2,
     },
     {
       label: "Inactive Agents",
-      value: dashboard.stats.inactive_agents,
+      value: statsData.inactive_agents,
       description: "Currently paused",
       icon: Clock3,
     },
     {
       label: "Recently Updated",
-      value: dashboard.stats.recently_updated_agents,
+      value: statsData.recently_updated_agents,
       description: "Changed in last 7 days",
       icon: Activity,
     },
@@ -219,10 +258,10 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
-      {loading ? (
-        <DashboardSkeleton />
-      ) : (
-        <>
+      <>
+        {loadingStats ? (
+          <DashboardStatsSkeleton />
+        ) : (
           <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {stats.map((stat) => (
               <div key={stat.label} className="agent-card flex items-center gap-4 p-5">
@@ -237,7 +276,11 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
+        )}
 
+        {loadingTopAgents ? (
+          <DashboardAgentsSkeleton />
+        ) : (
           <div className="agent-card mb-8 overflow-hidden">
             <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <div>
@@ -303,8 +346,8 @@ export default function DashboardPage() {
               </Table>
             )}
           </div>
-        </>
-      )}
+        )}
+      </>
     </div>
   );
 }

@@ -1,14 +1,13 @@
 /* eslint-disable react-refresh/only-export-components */
 import "@/styles.css";
-import { Toaster } from "@/components/ui/sonner";
+import { AppProviders } from "@/components/AppProviders";
 export { metadata } from "@/app/metadata";
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
       <body>
-        {children}
-        <Toaster richColors position="top-right" closeButton />
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );

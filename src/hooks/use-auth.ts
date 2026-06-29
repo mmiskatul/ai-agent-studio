@@ -1,6 +1,15 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import {
+  createElement,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { getApiErrorMessage } from "@/lib/error-message";
 
 export interface AuthUser {
@@ -125,7 +134,28 @@ function clearStoredSession() {
   writeStoredSession(null);
 }
 
-export function useAuth() {
+type AuthContextValue = {
+  user: AuthUser | null;
+  accessToken: string | null;
+  sessionToken: string | null;
+  loading: boolean;
+  signIn: (email: string, password: string) => Promise<AuthUser>;
+  signUp: (email: string, password: string) => Promise<EmailValidationResponse>;
+  verifyEmail: (email: string, code: string) => Promise<AuthUser>;
+  forgotPassword: (email: string) => Promise<EmailValidationResponse>;
+  verifyForgotPassword: (email: string, code: string) => Promise<MessageResponse>;
+  resetForgotPassword: (
+    email: string,
+    code: string,
+    password: string,
+  ) => Promise<MessageResponse>;
+  refreshAccessToken: () => Promise<string | null>;
+  signOut: () => Promise<void>;
+};
+
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -235,18 +265,45 @@ export function useAuth() {
     clearSessionState();
   }, [clearSessionState]);
 
-  return {
-    user,
-    accessToken,
-    sessionToken,
-    loading,
-    signIn,
-    signUp,
-    verifyEmail,
-    forgotPassword,
-    verifyForgotPassword,
-    resetForgotPassword,
-    refreshAccessToken,
-    signOut,
-  };
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      user,
+      accessToken,
+      sessionToken,
+      loading,
+      signIn,
+      signUp,
+      verifyEmail,
+      forgotPassword,
+      verifyForgotPassword,
+      resetForgotPassword,
+      refreshAccessToken,
+      signOut,
+    }),
+    [
+      user,
+      accessToken,
+      sessionToken,
+      loading,
+      signIn,
+      signUp,
+      verifyEmail,
+      forgotPassword,
+      verifyForgotPassword,
+      resetForgotPassword,
+      refreshAccessToken,
+      signOut,
+    ],
+  );
+
+  return createElement(AuthContext.Provider, { value }, children);
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+
+  return context;
 }

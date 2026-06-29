@@ -6,7 +6,12 @@ import {
   fetchBackendAgents,
   fetchBackendAllAgentResponsePages,
 } from "@/lib/agent-api";
-import { fetchDashboardOverview } from "@/lib/dashboard-api";
+import {
+  fetchDashboardCategories,
+  fetchDashboardRecentActivity,
+  fetchDashboardStats,
+  fetchDashboardTopAgents,
+} from "@/lib/dashboard-api";
 import { fetchProfile } from "@/lib/profile-api";
 import { fetchTemplates } from "@/lib/template-api";
 
@@ -16,6 +21,16 @@ interface AuthenticatedDataPrefetchProps {
 }
 
 const ROUTES_TO_PREFETCH = ["/dashboard", "/agents", "/agents/new", "/profile"];
+
+function scheduleBackgroundWork(work: () => void) {
+  if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+    const runWhenIdle = window.requestIdleCallback as (callback: () => void) => number;
+    runWhenIdle(work);
+    return;
+  }
+
+  globalThis.setTimeout(work, 0);
+}
 
 export function AuthenticatedDataPrefetch({
   accessToken,
@@ -33,13 +48,19 @@ export function AuthenticatedDataPrefetch({
       router.prefetch(route);
     }
 
-    void Promise.allSettled([
-      fetchDashboardOverview(accessToken, refreshAccessToken),
-      fetchBackendAgents(accessToken, refreshAccessToken),
-      fetchBackendAllAgentResponsePages(accessToken, refreshAccessToken),
-      fetchTemplates(accessToken, refreshAccessToken),
-      fetchProfile(accessToken, refreshAccessToken),
-    ]);
+    void fetchDashboardStats(accessToken, refreshAccessToken);
+
+    scheduleBackgroundWork(() => {
+      void Promise.allSettled([
+        fetchDashboardTopAgents(accessToken, refreshAccessToken),
+        fetchDashboardCategories(accessToken, refreshAccessToken),
+        fetchDashboardRecentActivity(accessToken, refreshAccessToken),
+        fetchBackendAgents(accessToken, refreshAccessToken),
+        fetchBackendAllAgentResponsePages(accessToken, refreshAccessToken),
+        fetchTemplates(accessToken, refreshAccessToken),
+        fetchProfile(accessToken, refreshAccessToken),
+      ]);
+    });
   }, [accessToken, refreshAccessToken, router]);
 
   return null;
