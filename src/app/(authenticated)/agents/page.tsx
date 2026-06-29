@@ -449,7 +449,7 @@ export default function AgentsPage() {
                       </Button>
                       {isAgentActive(agent) ? (
                         <Link
-                          href={buildAgentChatRoute(agent.id, agent.name)}
+                          href={buildAgentChatRoute(agent.id)}
                           onClick={(event) => event.stopPropagation()}
                         >
                           <Button size="sm" className="gap-1.5">

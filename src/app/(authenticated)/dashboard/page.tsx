@@ -400,7 +400,7 @@ export default function DashboardPage() {
                       <TableCell className="text-muted-foreground">{agent.category}</TableCell>
                       <TableCell className="text-right">
                         {agent.status === "enabled" ? (
-                          <Link href={buildAgentChatRoute(agent.id, agent.name)} onClick={(event) => event.stopPropagation()}>
+                          <Link href={buildAgentChatRoute(agent.id)} onClick={(event) => event.stopPropagation()}>
                             <Button size="sm">Chat</Button>
                           </Link>
                         ) : (

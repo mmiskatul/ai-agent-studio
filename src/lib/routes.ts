@@ -6,19 +6,11 @@ export function buildAgentRoute(agentId: string) {
   return `${AGENTS_ROUTE}/${agentId}`;
 }
 
-export function buildAgentChatRoute(
-  agentId: string,
-  agentName?: string | null,
-  chatId?: string | null,
-) {
+export function buildAgentChatRoute(agentId: string, chatId?: string | null) {
   const params = new URLSearchParams();
 
   if (chatId?.trim()) {
     params.set("chatId", chatId);
-  }
-
-  if (agentName?.trim()) {
-    params.set("name", agentName);
   }
 
   const query = params.toString();

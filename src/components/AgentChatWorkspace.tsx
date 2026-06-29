@@ -293,27 +293,11 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
   const chatStateCacheRef = useRef<Record<string, CachedChatState>>({});
   const prefetchedWorkspaceIdsRef = useRef<Set<string>>(new Set());
   const activePage = pages.find((page) => page.id === activePageId) ?? null;
-  const routeAgentName = searchParams.get("name")?.trim() || "";
-  const getRouteAgentName = useCallback(
-    (targetAgentId: string) => {
-      if (agentRef.current?.id === targetAgentId && agentRef.current.name.trim()) {
-        return agentRef.current.name;
-      }
-
-      const matchedSidebarChat = sidebarChatsRef.current.find((page) => page.agent_id === targetAgentId);
-      return matchedSidebarChat?.agent_name?.trim() || undefined;
-    },
-    [],
-  );
   const buildChatRoute = useCallback(
     (targetAgentId: string, targetChatId?: string | null) => {
-      return buildAgentChatRoute(
-        targetAgentId,
-        getRouteAgentName(targetAgentId) ?? routeAgentName,
-        targetChatId,
-      );
+      return buildAgentChatRoute(targetAgentId, targetChatId);
     },
-    [getRouteAgentName, routeAgentId, routeAgentName],
+    [],
   );
   const derivedActiveTitle = buildTitleFromMessages(messages);
   const activePageTitle =

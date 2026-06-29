@@ -16,7 +16,7 @@ export function AgentCard({ agent, onDelete }: AgentCardProps) {
   const router = useRouter();
   const active = isAgentActive(agent);
   const agentHref = buildAgentRoute(agent.id);
-  const chatHref = buildAgentChatRoute(agent.id, agent.name);
+  const chatHref = buildAgentChatRoute(agent.id);
 
   function prefetchRoutes() {
     router.prefetch(agentHref);
