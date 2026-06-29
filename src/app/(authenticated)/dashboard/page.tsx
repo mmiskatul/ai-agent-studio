@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Activity, Bot, Check, CheckCircle2, Clock3, Filter, Search } from "lucide-react";
 import {
   DASHBOARD_OVERVIEW_CACHE_KEY,
@@ -84,10 +84,11 @@ function DashboardSkeleton() {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { accessToken, refreshAccessToken } = useAuth();
+  const { accessToken, refreshAccessToken, loading: authLoading } = useAuth();
   const cachedDashboard = peekSessionCache<DashboardOverview>(DASHBOARD_OVERVIEW_CACHE_KEY, {
     allowExpired: true,
   });
+  const initialDashboardRef = useRef(cachedDashboard);
   const [dashboard, setDashboard] = useState<DashboardOverview>(cachedDashboard ?? emptyDashboard);
   const [loading, setLoading] = useState(!cachedDashboard);
   const [error, setError] = useState<string | null>(null);
@@ -95,13 +96,15 @@ export default function DashboardPage() {
   const [category, setCategory] = useState("All");
 
   useEffect(() => {
+    if (authLoading) return;
+
     async function loadDashboard() {
       if (!accessToken) {
         setLoading(false);
         return;
       }
 
-      if (!cachedDashboard) {
+      if (!initialDashboardRef.current) {
         setLoading(true);
       }
       try {
@@ -117,7 +120,7 @@ export default function DashboardPage() {
     }
 
     loadDashboard();
-  }, [accessToken, cachedDashboard, refreshAccessToken]);
+  }, [accessToken, authLoading, refreshAccessToken]);
 
   const categories = ["All", ...dashboard.categories.map((item) => item.name)];
   const filteredTopAgents = dashboard.top_agents.filter((agent) => {

@@ -1,9 +1,12 @@
 import { getApiErrorMessage, getApiSuccessData } from "@/lib/error-message";
+import { backendFetch } from "@/lib/backend-fetch";
 import { DASHBOARD_OVERVIEW_CACHE_KEY } from "@/lib/dashboard-api";
 import {
   getOrFetchSessionCached,
   invalidateSessionCache,
 } from "@/lib/session-cache";
+
+const fetch = backendFetch;
 
 export interface Agent {
   id: string;

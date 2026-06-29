@@ -1,5 +1,8 @@
 import { getApiErrorMessage } from "@/lib/error-message";
+import { backendFetch } from "@/lib/backend-fetch";
 import { getOrFetchSessionCached } from "@/lib/session-cache";
+
+const fetch = backendFetch;
 
 export interface DashboardStats {
   total_agents: number;

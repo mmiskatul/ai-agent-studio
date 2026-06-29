@@ -1,5 +1,8 @@
 import { getApiErrorMessage } from "@/lib/error-message";
+import { backendFetch } from "@/lib/backend-fetch";
 import { getOrFetchSessionCached, invalidateSessionCache } from "@/lib/session-cache";
+
+const fetch = backendFetch;
 
 export interface ProfileStats {
   total_agents: number;

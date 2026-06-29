@@ -1,5 +1,8 @@
 import { getApiErrorMessage, getApiSuccessData } from "@/lib/error-message";
+import { backendFetch } from "@/lib/backend-fetch";
 import type { Agent } from "@/lib/agent-api";
+
+const fetch = backendFetch;
 
 export interface CreateBuilderAgentInput {
   name: string;

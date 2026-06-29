@@ -15,7 +15,7 @@ interface AuthenticatedDataPrefetchProps {
   refreshAccessToken?: () => Promise<string | null>;
 }
 
-const ROUTES_TO_PREFETCH = ["/dashboard", "/agents", "/profile"];
+const ROUTES_TO_PREFETCH = ["/dashboard", "/agents", "/agents/new", "/profile"];
 
 export function AuthenticatedDataPrefetch({
   accessToken,

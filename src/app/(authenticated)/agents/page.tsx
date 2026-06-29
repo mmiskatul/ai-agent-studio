@@ -75,7 +75,7 @@ export default function AgentsPage() {
   const [editError, setEditError] = useState("");
   const [templates, setTemplates] = useState<AgentTemplate[]>(cachedTemplates ?? []);
 
-  const loadAgents = useCallback(async () => {
+  const loadPageData = useCallback(async () => {
     if (!accessToken) {
       setLoading(false);
       setError("Sign in again to load your agents.");
@@ -84,8 +84,23 @@ export default function AgentsPage() {
 
     try {
       setError("");
-      const data = await fetchBackendAgents(accessToken, refreshAccessToken);
-      setAgents(data);
+      const [agentsResult, templatesResult] = await Promise.allSettled([
+        fetchBackendAgents(accessToken, refreshAccessToken),
+        fetchTemplates(accessToken, refreshAccessToken),
+      ]);
+
+      if (agentsResult.status === "fulfilled") {
+        setAgents(agentsResult.value);
+      } else {
+        throw agentsResult.reason;
+      }
+
+      if (templatesResult.status === "fulfilled") {
+        setTemplates(templatesResult.value);
+      } else if (templates.length === 0) {
+        const templatesMessage = getErrorMessage(templatesResult.reason, "Failed to load templates");
+        toast.error("Could not load templates", { description: templatesMessage });
+      }
     } catch (err) {
       const message = getErrorMessage(err, "Failed to load agents");
       console.error("Failed to load agents:", err);
@@ -94,32 +109,12 @@ export default function AgentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken, refreshAccessToken]);
+  }, [accessToken, refreshAccessToken, templates.length]);
 
   useEffect(() => {
     if (authLoading) return;
-    void loadAgents();
-  }, [authLoading, loadAgents]);
-
-  useEffect(() => {
-    const token = accessToken;
-    if (!token) return;
-
-    async function loadTemplates(tokenValue: string) {
-      try {
-        const data = await fetchTemplates(tokenValue, refreshAccessToken);
-        setTemplates(data);
-      } catch (err) {
-        if (templates.length > 0) {
-          return;
-        }
-        const message = getErrorMessage(err, "Failed to load templates");
-        toast.error("Could not load templates", { description: message });
-      }
-    }
-
-    void loadTemplates(token);
-  }, [accessToken, refreshAccessToken, templates.length]);
+    void loadPageData();
+  }, [authLoading, loadPageData]);
 
   async function handleOpenEdit(agentId: string) {
     if (!accessToken) return;
@@ -173,7 +168,7 @@ export default function AgentsPage() {
         accessToken,
         refreshAccessToken,
       );
-      await loadAgents();
+      await loadPageData();
       setEditTarget(null);
       toast.success("Agent updated");
     } catch (err) {
@@ -192,7 +187,7 @@ export default function AgentsPage() {
     setIsDeleting(true);
     try {
       await deleteBackendAgent(deleteTarget.id, accessToken, refreshAccessToken);
-      await loadAgents();
+      await loadPageData();
       toast.success("Agent deleted");
     } catch (err) {
       const message = getErrorMessage(err, "Failed to delete agent");

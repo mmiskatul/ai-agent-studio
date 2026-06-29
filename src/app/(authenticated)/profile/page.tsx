@@ -15,6 +15,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { peekSessionCache } from "@/lib/session-cache";
 import {
   fetchProfile,
@@ -37,11 +38,13 @@ function formatDate(value?: string) {
 }
 
 export default function ProfilePage() {
-  const { user, accessToken, sessionToken, refreshAccessToken, signOut } = useAuth();
+  const { user, accessToken, sessionToken, refreshAccessToken, signOut, loading: authLoading } =
+    useAuth();
   const cachedProfile = peekSessionCache<ProfileResponse>(PROFILE_CACHE_KEY, {
     allowExpired: true,
   });
   const [profile, setProfile] = useState<ProfileResponse | null>(cachedProfile);
+  const [loadingProfile, setLoadingProfile] = useState(!cachedProfile);
   const [displayNameInput, setDisplayNameInput] = useState("");
   const [profileImageInput, setProfileImageInput] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -59,8 +62,13 @@ export default function ProfilePage() {
   const latestConversation = profile?.latest_conversation;
 
   useEffect(() => {
+    if (authLoading) return;
+
     async function loadProfileStats() {
-      if (!accessToken) return;
+      if (!accessToken) {
+        setLoadingProfile(false);
+        return;
+      }
 
       try {
         const data = await fetchProfile(accessToken, refreshAccessToken);
@@ -69,11 +77,55 @@ export default function ProfilePage() {
         setProfileImageInput(data.profile_image ?? null);
       } catch (err) {
         console.error("Failed to load profile stats:", err);
+      } finally {
+        setLoadingProfile(false);
       }
     }
 
-    loadProfileStats();
-  }, [accessToken, refreshAccessToken]);
+    void loadProfileStats();
+  }, [accessToken, authLoading, refreshAccessToken]);
+
+  if (loadingProfile && !profile) {
+    return (
+      <div className="mx-auto w-full max-w-6xl p-6">
+        <div className="mb-6">
+          <Skeleton className="h-9 w-32" />
+          <Skeleton className="mt-2 h-4 w-72" />
+        </div>
+
+        <section className="agent-card mb-6 p-6">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+              <Skeleton className="h-24 w-24 rounded-full" />
+              <div className="space-y-3">
+                <Skeleton className="h-8 w-48" />
+                <Skeleton className="h-14 w-80 rounded-lg" />
+              </div>
+            </div>
+            <Skeleton className="h-10 w-32 rounded-lg" />
+          </div>
+        </section>
+
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <section className="agent-card p-6">
+            <div className="space-y-4">
+              <Skeleton className="h-6 w-32" />
+              <Skeleton className="h-24 w-full rounded-lg" />
+              <Skeleton className="h-24 w-full rounded-lg" />
+              <Skeleton className="h-12 w-36 rounded-lg" />
+            </div>
+          </section>
+          <aside className="agent-card p-6">
+            <div className="space-y-4">
+              <Skeleton className="h-6 w-36" />
+              <Skeleton className="h-24 w-full rounded-lg" />
+              <Skeleton className="h-24 w-full rounded-lg" />
+            </div>
+          </aside>
+        </div>
+      </div>
+    );
+  }
 
   async function handleProfileImageChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];

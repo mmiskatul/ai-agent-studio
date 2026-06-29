@@ -32,9 +32,33 @@ interface TokenResponse {
 }
 
 const AUTH_STORAGE_KEY = "agenthub.auth.session";
+const AUTH_API_PROXY_BASE = "/backend/api/v1";
+const AUTH_API_DIRECT_BASE = process.env.NEXT_PUBLIC_BACKEND_URL
+  ? `${process.env.NEXT_PUBLIC_BACKEND_URL.replace(/\/$/, "")}/api/v1`
+  : null;
 
-async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
-  const response = await fetch(`/backend/api/v1${path}`, {
+function shouldRetryAuthRequest(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("fetch failed") ||
+    message.includes("networkerror") ||
+    message.includes("network request failed") ||
+    message.includes("socket hang up") ||
+    message.includes("econnreset")
+  );
+}
+
+async function requestJsonAgainstBase<T>(
+  baseUrl: string,
+  path: string,
+  init: RequestInit,
+): Promise<T> {
+  const response = await fetch(`${baseUrl}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -49,6 +73,28 @@ async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
   }
 
   return body as T;
+}
+
+async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
+  if (AUTH_API_DIRECT_BASE) {
+    try {
+      return await requestJsonAgainstBase(AUTH_API_DIRECT_BASE, path, init);
+    } catch (error) {
+      if (!shouldRetryAuthRequest(error)) {
+        throw error;
+      }
+    }
+  }
+
+  try {
+    return await requestJsonAgainstBase(AUTH_API_PROXY_BASE, path, init);
+  } catch (error) {
+    if (!AUTH_API_DIRECT_BASE || !shouldRetryAuthRequest(error)) {
+      throw error;
+    }
+
+    return requestJsonAgainstBase(AUTH_API_DIRECT_BASE, path, init);
+  }
 }
 
 function readStoredSession() {

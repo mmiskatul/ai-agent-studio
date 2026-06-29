@@ -1,5 +1,8 @@
 import { getApiErrorMessage } from "@/lib/error-message";
+import { backendFetch } from "@/lib/backend-fetch";
 import { getOrFetchSessionCached, peekSessionCache } from "@/lib/session-cache";
+
+const fetch = backendFetch;
 
 export interface AgentTemplate {
   id: string;

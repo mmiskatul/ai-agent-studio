@@ -1,4 +1,7 @@
 import { getApiErrorMessage } from "@/lib/error-message";
+import { backendFetch } from "@/lib/backend-fetch";
+
+const fetch = backendFetch;
 
 export interface LLMEngineOption {
   value: string;
