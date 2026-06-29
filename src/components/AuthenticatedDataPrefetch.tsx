@@ -8,7 +8,6 @@ import {
 } from "@/lib/agent-api";
 import { fetchDashboardOverview } from "@/lib/dashboard-api";
 import { fetchProfile } from "@/lib/profile-api";
-import { CHATS_ROUTE } from "@/lib/routes";
 import { fetchTemplates } from "@/lib/template-api";
 
 interface AuthenticatedDataPrefetchProps {
@@ -16,7 +15,7 @@ interface AuthenticatedDataPrefetchProps {
   refreshAccessToken?: () => Promise<string | null>;
 }
 
-const ROUTES_TO_PREFETCH = ["/dashboard", CHATS_ROUTE, "/agents", "/profile"];
+const ROUTES_TO_PREFETCH = ["/dashboard", "/agents", "/profile"];
 
 export function AuthenticatedDataPrefetch({
   accessToken,

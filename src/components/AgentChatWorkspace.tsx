@@ -23,7 +23,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { ChatInterface } from "@/components/ChatInterface";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AUTHENTICATED_HOME, buildAgentChatRoute, CHATS_ROUTE } from "@/lib/routes";
+import { AUTHENTICATED_HOME, buildAgentChatRoute } from "@/lib/routes";
 import { getChatErrorMessage, getErrorMessage } from "@/lib/error-message";
 import { peekSessionCache, primeSessionCache } from "@/lib/session-cache";
 import {
@@ -374,10 +374,6 @@ export function AgentChatWorkspace({ routeAgentId = null }: { routeAgentId?: str
   ).map((page, index) => ({ page, index }));
   const buildChatRoute = useCallback(
     (targetAgentId: string, targetChatId?: string | null) => {
-      if (!routeAgentId) {
-        return targetChatId ? `${CHATS_ROUTE}?chatId=${targetChatId}` : CHATS_ROUTE;
-      }
-
       return buildAgentChatRoute(
         targetAgentId,
         getRouteAgentName(targetAgentId) ?? routeAgentName,

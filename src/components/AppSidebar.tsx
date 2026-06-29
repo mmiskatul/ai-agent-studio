@@ -8,12 +8,11 @@ import {
   CircleUserRound,
   LayoutDashboard,
   LogOut,
-  MessageSquare,
   Users,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { CHATS_ROUTE, SIGN_IN_ROUTE } from "@/lib/routes";
+import { SIGN_IN_ROUTE } from "@/lib/routes";
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -23,7 +22,6 @@ export function AppSidebar() {
   const navItems = useMemo(
     () => [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-      { label: "Chats", href: CHATS_ROUTE, icon: MessageSquare },
       { label: "Agents", href: "/agents", icon: Users },
       { label: "Profile", href: "/profile", icon: CircleUserRound },
     ],
