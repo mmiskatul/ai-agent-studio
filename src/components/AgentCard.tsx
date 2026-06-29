@@ -15,17 +15,28 @@ interface AgentCardProps {
 export function AgentCard({ agent, onDelete }: AgentCardProps) {
   const router = useRouter();
   const active = isAgentActive(agent);
+  const agentHref = buildAgentRoute(agent.id);
+  const chatHref = buildAgentChatRoute(agent.id, agent.name);
+
+  function prefetchRoutes() {
+    router.prefetch(agentHref);
+    if (active) {
+      router.prefetch(chatHref);
+    }
+  }
 
   return (
     <div
       className="agent-card flex cursor-pointer flex-col gap-3 p-5"
-      onClick={() => router.push(buildAgentRoute(agent.id))}
+      onClick={() => router.push(agentHref)}
+      onMouseEnter={prefetchRoutes}
+      onFocus={prefetchRoutes}
       role="link"
       tabIndex={0}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          router.push(buildAgentRoute(agent.id));
+          router.push(agentHref);
         }
       }}
     >
@@ -60,7 +71,7 @@ export function AgentCard({ agent, onDelete }: AgentCardProps) {
 
       <div className="flex items-center gap-2 border-t border-border pt-3">
         <Link
-          href={active ? buildAgentChatRoute(agent.id, agent.name) : "#"}
+          href={active ? chatHref : "#"}
           className="flex-1"
           aria-disabled={!active}
           onClick={(event) => {
@@ -73,7 +84,7 @@ export function AgentCard({ agent, onDelete }: AgentCardProps) {
             Chat
           </Button>
         </Link>
-        <Link href={buildAgentRoute(agent.id)} onClick={(event) => event.stopPropagation()}>
+        <Link href={agentHref} onClick={(event) => event.stopPropagation()}>
           <Button variant="outline" size="sm">
             <Pencil className="h-3.5 w-3.5" />
           </Button>

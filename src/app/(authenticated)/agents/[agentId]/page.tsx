@@ -146,7 +146,7 @@ export default function EditAgentPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-2xl p-6">
+      <div className="mx-auto w-full max-w-2xl">
         <div className="mb-6 flex items-center justify-between">
           <Skeleton className="h-8 w-36" />
           <Skeleton className="h-9 w-24 rounded-md" />
@@ -164,7 +164,7 @@ export default function EditAgentPage() {
 
   if (error || !agent) {
     return (
-      <div className="p-6 text-center">
+      <div className="py-6 text-center">
         <p className="text-muted-foreground">{error || "Agent not found"}</p>
         <Button variant="outline" className="mt-4" onClick={() => router.push(AUTHENTICATED_HOME)}>
           Back to Dashboard
@@ -174,7 +174,7 @@ export default function EditAgentPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl p-6">
+    <div className="mx-auto w-full max-w-2xl">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground">Edit Agent</h1>
         <Button
