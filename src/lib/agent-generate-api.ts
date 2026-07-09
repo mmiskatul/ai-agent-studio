@@ -1,4 +1,5 @@
-import { getApiErrorMessage } from "@/lib/error-message";
+import { ApiRequestError, getApiErrorMessage } from "@/lib/error-message";
+import { withUnauthorizedRetry } from "@/lib/backend-auth";
 import { backendFetch } from "@/lib/backend-fetch";
 
 const fetch = backendFetch;
@@ -20,7 +21,10 @@ async function postGeneratedText<TBody extends Record<string, unknown>, TRespons
   const responseBody = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(getApiErrorMessage(responseBody, "Failed to generate content"));
+    throw new ApiRequestError(getApiErrorMessage(responseBody, "Failed to generate content"), {
+      detail: responseBody,
+      status: response.status,
+    });
   }
 
   return responseBody as TResponse;
@@ -48,37 +52,6 @@ function buildDescriptionFallback(name: string, role?: string) {
   }
 
   return `${cleanedName} helps users complete focused work with clear, practical outputs. It is useful for answering questions, organizing information, and producing responses that are ready to use in real workflows.`;
-}
-
-async function withUnauthorizedRetry<T>(
-  request: (accessToken: string) => Promise<T>,
-  accessToken: string,
-  refreshAccessToken?: () => Promise<string | null>,
-) {
-  try {
-    return await request(accessToken);
-  } catch (error) {
-    if (!(error instanceof Error) || !refreshAccessToken) {
-      throw error;
-    }
-
-    const message = error.message.toLowerCase();
-    const isUnauthorized =
-      message.includes("invalid bearer token") ||
-      message.includes("missing bearer token") ||
-      message.includes("unauthorized");
-
-    if (!isUnauthorized) {
-      throw error;
-    }
-
-    const refreshedToken = await refreshAccessToken();
-    if (!refreshedToken) {
-      throw error;
-    }
-
-    return request(refreshedToken);
-  }
 }
 
 export async function generateAgentDescription(

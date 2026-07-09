@@ -1,6 +1,7 @@
+import { withUnauthorizedRetry } from "@/lib/backend-auth";
 import { getApiErrorMessage, getApiSuccessData } from "@/lib/error-message";
 import { backendFetch } from "@/lib/backend-fetch";
-import type { Agent } from "@/lib/agent-api";
+import { normalizeAgent, type Agent } from "@/lib/agent-api";
 
 const fetch = backendFetch;
 
@@ -11,6 +12,7 @@ export interface CreateBuilderAgentInput {
   categoryTag?: string;
   systemPrompt: string;
   welcomeMessage?: string;
+  llmEngine?: string;
   temperature: number;
   status: "enabled" | "disabled";
 }
@@ -29,6 +31,7 @@ async function postBuilderAgent(input: CreateBuilderAgentInput, accessToken: str
       category_tag: input.categoryTag ?? null,
       system_prompt: input.systemPrompt,
       welcome_message: input.welcomeMessage ?? null,
+      llm_engine: input.llmEngine ?? "gpt-4o",
       temperature: input.temperature,
       status: input.status,
     }),
@@ -40,7 +43,7 @@ async function postBuilderAgent(input: CreateBuilderAgentInput, accessToken: str
     throw new Error(getApiErrorMessage(body, "Failed to create agent"));
   }
 
-  return getApiSuccessData<Agent>(body);
+  return normalizeAgent(getApiSuccessData<Agent>(body));
 }
 
 export async function createBuilderAgent(
@@ -48,27 +51,9 @@ export async function createBuilderAgent(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  try {
-    return await postBuilderAgent(input, accessToken);
-  } catch (error) {
-    if (!(error instanceof Error) || !refreshAccessToken) {
-      throw error;
-    }
-
-    const isUnauthorized =
-      error.message.toLowerCase().includes("invalid bearer token") ||
-      error.message.toLowerCase().includes("missing bearer token") ||
-      error.message.toLowerCase().includes("unauthorized");
-
-    if (!isUnauthorized) {
-      throw error;
-    }
-
-    const refreshedToken = await refreshAccessToken();
-    if (!refreshedToken) {
-      throw error;
-    }
-
-    return postBuilderAgent(input, refreshedToken);
-  }
+  return withUnauthorizedRetry(
+    (token) => postBuilderAgent(input, token),
+    accessToken,
+    refreshAccessToken,
+  );
 }

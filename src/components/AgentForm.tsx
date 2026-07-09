@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { uploadAgentKnowledgeFile } from "@/lib/agent-api";
 import { generateAgentDescription } from "@/lib/agent-generate-api";
+import { getApiFieldErrors, getErrorMessage } from "@/lib/error-message";
 import type { AgentTemplate } from "@/lib/template-api";
 
 export interface AgentFormValues {
@@ -23,6 +24,8 @@ export interface AgentFormValues {
 interface AgentFormProps {
   initialValues?: Partial<AgentFormValues>;
   templates?: AgentTemplate[];
+  templatesLoading?: boolean;
+  onTemplateFocus?: () => void;
   onSubmit: (values: AgentFormValues) => Promise<void>;
   onCancel: () => void;
   submitLabel: string;
@@ -41,6 +44,9 @@ const defaultValues: AgentFormValues = {
   status: "enabled",
   templateId: "",
 };
+
+const allowedLanguages = new Set<AgentFormValues["language"]>(["EN", "DE", "RU"]);
+const allowedStatuses = new Set<AgentFormValues["status"]>(["enabled", "disabled"]);
 
 function resolveFormValues(
   initialValues?: Partial<AgentFormValues>,
@@ -75,6 +81,8 @@ function resolveFormValues(
 export function AgentForm({
   initialValues,
   templates = [],
+  templatesLoading = false,
+  onTemplateFocus,
   onSubmit,
   onCancel,
   submitLabel,
@@ -87,6 +95,7 @@ export function AgentForm({
     resolveFormValues(initialValues, draftStorageKey),
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [formError, setFormError] = useState("");
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
   const [isUploadingKnowledge, setIsUploadingKnowledge] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -105,6 +114,7 @@ export function AgentForm({
 
   function updateValue<Key extends keyof AgentFormValues>(key: Key, value: AgentFormValues[Key]) {
     setValues((current) => ({ ...current, [key]: value }));
+    setFormError("");
     setErrors((current) => {
       if (!current[key]) return current;
       const next = { ...current };
@@ -133,12 +143,22 @@ export function AgentForm({
     if (!values.name.trim()) nextErrors.name = "Agent name is required.";
     if (!values.role.trim()) nextErrors.role = "Role is required.";
     if (!values.purpose.trim()) nextErrors.purpose = "Purpose is required.";
+    if (!allowedLanguages.has(values.language)) nextErrors.language = "Select a valid language.";
+    if (!allowedStatuses.has(values.status)) nextErrors.status = "Select a valid status.";
+    if (
+      values.templateId &&
+      templates.length > 0 &&
+      !templates.some((template) => template.id === values.templateId)
+    ) {
+      nextErrors.templateId = "Select a valid template.";
+    }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    setFormError("");
     if (!validate()) return;
 
     const payload = {
@@ -151,7 +171,16 @@ export function AgentForm({
       templateId: values.templateId,
     };
 
-    await onSubmit(payload);
+    try {
+      await onSubmit(payload);
+    } catch (error) {
+      const nextErrors = getApiFieldErrors(error instanceof Error ? (error as Error & { detail?: unknown }).detail : undefined);
+      if (Object.keys(nextErrors).length > 0) {
+        setErrors((current) => ({ ...current, ...nextErrors }));
+      }
+      setFormError(getErrorMessage(error, "Failed to save agent."));
+      return;
+    }
 
     if (typeof window !== "undefined" && draftStorageKey) {
       window.localStorage.removeItem(draftStorageKey);
@@ -168,6 +197,7 @@ export function AgentForm({
     if (!accessToken) nextErrors.purpose = "Sign in again to generate a purpose.";
 
     if (Object.keys(nextErrors).length > 0) {
+      setFormError("");
       setErrors((current) => ({ ...current, ...nextErrors }));
       return;
     }
@@ -181,6 +211,8 @@ export function AgentForm({
         refreshAccessToken,
       );
       updateValue("purpose", purpose);
+    } catch (error) {
+      setFormError(getErrorMessage(error, "Failed to generate purpose."));
     } finally {
       setIsGeneratingDescription(false);
     }
@@ -188,12 +220,22 @@ export function AgentForm({
 
   async function handleKnowledgeUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    if (!file || !accessToken) return;
+    if (!file) return;
+    if (!accessToken) {
+      setErrors((current) => ({ ...current, knowledgeText: "Sign in again to upload knowledge." }));
+      return;
+    }
 
     setIsUploadingKnowledge(true);
     try {
       const result = await uploadAgentKnowledgeFile(file, accessToken, refreshAccessToken);
       updateValue("knowledgeText", result.extracted_text);
+    } catch (error) {
+      setErrors((current) => ({
+        ...current,
+        knowledgeText: getErrorMessage(error, "Failed to upload knowledge."),
+      }));
+      setFormError(getErrorMessage(error, "Failed to upload knowledge."));
     } finally {
       setIsUploadingKnowledge(false);
       if (fileInputRef.current) {
@@ -204,6 +246,17 @@ export function AgentForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {Object.keys(errors).length > 0 ? (
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <p className="font-medium">Please fix the following errors:</p>
+          <ul className="mt-2 list-disc pl-5">
+            {Object.entries(errors).map(([field, message]) => (
+              <li key={`${field}-${message}`}>{message}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <Label htmlFor="agent-name">Name *</Label>
@@ -213,6 +266,7 @@ export function AgentForm({
             onChange={(event) => updateValue("name", event.target.value)}
             placeholder="Sales Assistant"
             className="mt-1"
+            aria-invalid={Boolean(errors.name)}
           />
           {errors.name ? <p className="mt-1 text-xs text-destructive">{errors.name}</p> : null}
         </div>
@@ -225,6 +279,7 @@ export function AgentForm({
             onChange={(event) => updateValue("role", event.target.value)}
             placeholder="Lead response specialist"
             className="mt-1"
+            aria-invalid={Boolean(errors.role)}
           />
           {errors.role ? <p className="mt-1 text-xs text-destructive">{errors.role}</p> : null}
         </div>
@@ -252,6 +307,7 @@ export function AgentForm({
           placeholder="Explain what this agent should do and how it should help users."
           rows={4}
           className="mt-1"
+          aria-invalid={Boolean(errors.purpose)}
         />
         {errors.purpose ? (
           <p className="mt-1 text-xs text-destructive">{errors.purpose}</p>
@@ -290,7 +346,11 @@ export function AgentForm({
           placeholder="Optional uploaded or pasted knowledge for this agent."
           rows={6}
           className="mt-1"
+          aria-invalid={Boolean(errors.knowledgeText)}
         />
+        {errors.knowledgeText ? (
+          <p className="mt-1 text-xs text-destructive">{errors.knowledgeText}</p>
+        ) : null}
         <p className="mt-1 text-xs text-muted-foreground">
           Supported: PDF, TXT, MD, CSV, JSON. Uploaded text is stored on the agent and used in chat.
         </p>
@@ -306,11 +366,15 @@ export function AgentForm({
               updateValue("language", event.target.value as AgentFormValues["language"])
             }
             className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            aria-invalid={Boolean(errors.language)}
           >
             <option value="EN">English</option>
             <option value="DE">German</option>
             <option value="RU">Russian</option>
           </select>
+          {errors.language ? (
+            <p className="mt-1 text-xs text-destructive">{errors.language}</p>
+          ) : null}
         </div>
 
         <div>
@@ -322,10 +386,12 @@ export function AgentForm({
               updateValue("status", event.target.value as AgentFormValues["status"])
             }
             className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            aria-invalid={Boolean(errors.status)}
           >
             <option value="enabled">Enabled</option>
             <option value="disabled">Disabled</option>
           </select>
+          {errors.status ? <p className="mt-1 text-xs text-destructive">{errors.status}</p> : null}
         </div>
 
         <div>
@@ -334,15 +400,27 @@ export function AgentForm({
             id="agent-template"
             value={values.templateId}
             onChange={(event) => applyTemplate(event.target.value)}
+            onFocus={onTemplateFocus}
             className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            aria-invalid={Boolean(errors.templateId)}
           >
             <option value="">Custom</option>
+            {templatesLoading ? <option value="" disabled>Loading templates...</option> : null}
             {templates.map((template) => (
               <option key={template.id} value={template.id}>
                 {template.label}
               </option>
             ))}
           </select>
+          {errors.templateId ? (
+            <p className="mt-1 text-xs text-destructive">{errors.templateId}</p>
+          ) : templatesLoading ? (
+            <p className="mt-1 text-xs text-muted-foreground">Loading templates...</p>
+          ) : templates.length === 0 ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Templates load when you open this field.
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -359,6 +437,7 @@ export function AgentForm({
           Draft is saved in this browser and restored after reload.
         </p>
       ) : null}
+      {formError ? <p className="text-sm text-destructive">{formError}</p> : null}
     </form>
   );
 }

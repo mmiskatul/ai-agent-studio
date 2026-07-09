@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { AgentForm, type AgentFormValues } from "@/components/AgentForm";
 import { Button } from "@/components/ui/button";
@@ -23,38 +23,29 @@ export default function NewAgentPage() {
   });
   const [templates, setTemplates] = useState<AgentTemplate[]>(cachedTemplates ?? []);
   const [isSaving, setIsSaving] = useState(false);
-  const [loadingTemplates, setLoadingTemplates] = useState(!cachedTemplates);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  useEffect(() => {
-    if (authLoading) return;
-
-    async function loadTemplates() {
-      const token = accessToken;
-      if (!token) {
-        setLoadingTemplates(false);
-        return;
-      }
-
-      try {
-        const data = await fetchTemplates(token, refreshAccessToken);
-        setTemplates(data);
-      } catch (err) {
-        if (templates.length > 0) {
-          setLoadingTemplates(false);
-          return;
-        }
-        const message = getErrorMessage(err, "Failed to load templates.");
-        setError(message);
-        toast.error("Could not load templates", { description: message });
-      } finally {
-        setLoadingTemplates(false);
-      }
+  const ensureTemplatesLoaded = useCallback(async () => {
+    if (templates.length > 0 || authLoading || !accessToken) {
+      return templates;
     }
 
-    void loadTemplates();
-  }, [accessToken, authLoading, refreshAccessToken, templates.length]);
+    setLoadingTemplates(true);
+    try {
+      const data = await fetchTemplates(accessToken, refreshAccessToken);
+      setTemplates(data);
+      return data;
+    } catch (err) {
+      const message = getErrorMessage(err, "Failed to load templates.");
+      setError(message);
+      toast.error("Could not load templates", { description: message });
+      throw err;
+    } finally {
+      setLoadingTemplates(false);
+    }
+  }, [accessToken, authLoading, refreshAccessToken, templates]);
 
   async function handleSubmit(values: AgentFormValues) {
     if (!accessToken) {
@@ -68,9 +59,11 @@ export default function NewAgentPage() {
     setError("");
     setSuccessMessage("");
 
-    const selectedTemplate = templates.find((template) => template.id === values.templateId);
-
     try {
+      const availableTemplates =
+        values.templateId && templates.length === 0 ? await ensureTemplatesLoaded() : templates;
+      const selectedTemplate = availableTemplates.find((template) => template.id === values.templateId);
+
       const created = await createBackendAgent(
         {
           name: values.name,
@@ -81,6 +74,7 @@ export default function NewAgentPage() {
           language: values.language,
           template_type: selectedTemplate?.key || null,
           template_id: values.templateId || null,
+          category_tag: null,
           system_prompt:
             selectedTemplate?.system_prompt ||
             buildStandardSystemPrompt({
@@ -91,6 +85,7 @@ export default function NewAgentPage() {
               templateType: selectedTemplate?.key || "custom",
             }),
           welcome_message: null,
+          llm_engine: "gpt-4o",
           status: values.status,
           tools: [],
           model: null,
@@ -98,8 +93,6 @@ export default function NewAgentPage() {
           routing_keywords: [],
           priority: 100,
           is_active: values.status === "enabled",
-          user_id: "",
-          owner_user_id: "",
         },
         accessToken,
         refreshAccessToken,
@@ -112,6 +105,7 @@ export default function NewAgentPage() {
       const message = getErrorMessage(err, "Failed to create agent.");
       setError(message);
       toast.error("Could not create agent", { description: message });
+      throw err;
     } finally {
       setIsSaving(false);
     }
@@ -144,20 +138,20 @@ export default function NewAgentPage() {
           </div>
         ) : null}
 
-        {loadingTemplates ? (
-          <p className="text-sm text-muted-foreground">Loading templates...</p>
-        ) : (
-          <AgentForm
-            templates={templates}
-            onSubmit={handleSubmit}
-            onCancel={() => router.push(AUTHENTICATED_HOME)}
-            submitLabel="Create Agent"
-            isSubmitting={isSaving}
-            accessToken={accessToken}
-            refreshAccessToken={refreshAccessToken}
-            draftStorageKey={NEW_AGENT_DRAFT_KEY}
-          />
-        )}
+        <AgentForm
+          templates={templates}
+          templatesLoading={loadingTemplates}
+          onTemplateFocus={() => {
+            void ensureTemplatesLoaded();
+          }}
+          onSubmit={handleSubmit}
+          onCancel={() => router.push(AUTHENTICATED_HOME)}
+          submitLabel="Create Agent"
+          isSubmitting={isSaving}
+          accessToken={accessToken}
+          refreshAccessToken={refreshAccessToken}
+          draftStorageKey={NEW_AGENT_DRAFT_KEY}
+        />
       </div>
     </div>
   );

@@ -13,6 +13,18 @@ export function getErrorMessage(
   return fallback;
 }
 
+export class ApiRequestError extends Error {
+  detail?: unknown;
+  status?: number;
+
+  constructor(message: string, options?: { detail?: unknown; status?: number }) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.detail = options?.detail;
+    this.status = options?.status;
+  }
+}
+
 type ApiValidationIssue = {
   loc?: unknown;
   msg?: unknown;
@@ -34,6 +46,32 @@ function humanizeFieldName(value: string) {
   return value.replace(/_/g, " ");
 }
 
+function normalizeFieldKey(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "description") return "purpose";
+  if (normalized === "knowledge_text") return "knowledgeText";
+  if (normalized === "template_id") return "templateId";
+  if (normalized === "template_type") return "templateType";
+  return value;
+}
+
+function extractValidationIssues(detail: unknown) {
+  if (Array.isArray(detail)) {
+    return detail.filter((issue): issue is ApiValidationIssue => !!issue && typeof issue === "object");
+  }
+
+  if (detail && typeof detail === "object") {
+    const body = detail as ApiErrorBody;
+    return [body.errors, body.detail].flatMap((value) =>
+      Array.isArray(value)
+        ? value.filter((issue): issue is ApiValidationIssue => !!issue && typeof issue === "object")
+        : [],
+    );
+  }
+
+  return [];
+}
+
 function formatValidationIssue(issue: ApiValidationIssue) {
   const message = typeof issue.msg === "string" ? issue.msg.trim() : "";
   const location = Array.isArray(issue.loc)
@@ -51,6 +89,32 @@ function formatValidationIssue(issue: ApiValidationIssue) {
   }
 
   return message;
+}
+
+export function getApiFieldErrors(detail: unknown) {
+  const fieldErrors: Record<string, string> = {};
+
+  for (const issue of extractValidationIssues(detail)) {
+    if (!Array.isArray(issue.loc)) {
+      continue;
+    }
+
+    const field = issue.loc
+      .filter((part): part is string => typeof part === "string")
+      .map((part) => part.trim())
+      .filter((part) => part && part !== "body" && part !== "query" && part !== "path")
+      .map(normalizeFieldKey)
+      .at(-1);
+
+    const message = typeof issue.msg === "string" ? issue.msg.trim() : "";
+    if (!field || !message) {
+      continue;
+    }
+
+    fieldErrors[field] = fieldErrors[field] ? `${fieldErrors[field]}. ${message}` : message;
+  }
+
+  return fieldErrors;
 }
 
 export function getApiErrorMessage(
@@ -83,14 +147,9 @@ export function getApiErrorMessage(
     }
 
     const body = detail as ApiErrorBody;
-    const structuredIssues = [body.errors, body.detail]
-      .flatMap((value) => (Array.isArray(value) ? value : []))
+    const structuredIssues = extractValidationIssues(detail)
       .map((issue) =>
-        issue && typeof issue === "object"
-          ? formatValidationIssue(issue as ApiValidationIssue)
-          : typeof issue === "string"
-            ? issue.trim()
-            : "",
+        formatValidationIssue(issue),
       )
       .filter(Boolean);
 

@@ -1,9 +1,11 @@
-import { getApiErrorMessage, getApiSuccessData } from "@/lib/error-message";
+import { ApiRequestError, getApiErrorMessage, getApiSuccessData } from "@/lib/error-message";
+import { withUnauthorizedRetry } from "@/lib/backend-auth";
 import { backendFetch } from "@/lib/backend-fetch";
 import { DASHBOARD_OVERVIEW_CACHE_KEY } from "@/lib/dashboard-api";
 import {
   getOrFetchSessionCached,
   invalidateSessionCache,
+  invalidateSessionCacheByPrefix,
   peekSessionCache,
   primeSessionCache,
 } from "@/lib/session-cache";
@@ -21,8 +23,10 @@ export interface Agent {
   language: "EN" | "DE" | "RU";
   template_type: string | null;
   template_id?: string | null;
+  category_tag: string | null;
   system_prompt: string;
   welcome_message?: string | null;
+  llm_engine: string;
   status: "enabled" | "disabled";
   owner_user_id?: string;
   user_id?: string;
@@ -37,7 +41,27 @@ export interface Agent {
   updated_at: string;
 }
 
-export type AgentInsert = Omit<Agent, "id" | "queries_30d" | "created_at" | "updated_at">;
+export interface AgentInsert {
+  name: string;
+  role: string;
+  purpose: string;
+  description?: string | null;
+  knowledge_text?: string | null;
+  language: "EN" | "DE" | "RU";
+  template_type?: string | null;
+  template_id?: string | null;
+  category_tag?: string | null;
+  system_prompt: string;
+  welcome_message?: string | null;
+  llm_engine?: string;
+  model?: string | null;
+  temperature?: number;
+  status?: "enabled" | "disabled";
+  tools?: string[];
+  routing_keywords?: string[];
+  priority?: number;
+  is_active?: boolean;
+}
 export type AgentUpdate = Partial<AgentInsert>;
 
 export interface AgentKnowledgeUploadResult {
@@ -45,6 +69,18 @@ export interface AgentKnowledgeUploadResult {
   content_type: string;
   extracted_text: string;
   character_count: number;
+}
+
+interface AgentKnowledgeUploadJob {
+  job_id: string;
+  status: "pending" | "running" | "completed" | "failed";
+  file_name: string;
+  content_type: string;
+  extracted_text?: string | null;
+  character_count: number;
+  error?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Chat {
@@ -103,6 +139,8 @@ export interface StructuredChatResponse {
   };
   system_summary: string;
   response: string;
+  markdown: string;
+  render_mode: string;
   routing_reason: string;
   memory_updated: boolean;
   metadata: {
@@ -139,14 +177,47 @@ export const BACKEND_AGENTS_CACHE_KEY = "backend-agents";
 export const BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY = "backend-all-agent-response-pages";
 const BACKEND_AGENTS_CACHE_TTL_MS = 45_000;
 const BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_TTL_MS = 20_000;
+const BACKEND_AGENT_RESPONSE_PAGES_CACHE_TTL_MS = 20_000;
+const BACKEND_AGENT_RESPONSE_WORKSPACE_CACHE_TTL_MS = 20_000;
 
 function backendAgentCacheKey(agentId: string) {
   return `backend-agent:${agentId}`;
 }
 
+function backendAgentResponsePagesCacheKey(agentId: string) {
+  return `backend-agent-response-pages:${agentId}`;
+}
+
+function backendAgentResponseWorkspaceCacheKey(agentId: string, chatId: string | null) {
+  return `backend-agent-response-workspace:${agentId}:${chatId || "latest"}`;
+}
+
+function backendAgentResponseWorkspacePrefix(agentId: string) {
+  return `backend-agent-response-workspace:${agentId}:`;
+}
+
+function mergeAgentIntoList(agent: Agent) {
+  const cachedAgents = peekSessionCache<Agent[]>(BACKEND_AGENTS_CACHE_KEY, { allowExpired: true }) ?? [];
+  const nextAgents = [agent, ...cachedAgents.filter((item) => item.id !== agent.id)].sort((left, right) =>
+    (right.updated_at || right.created_at).localeCompare(left.updated_at || left.created_at),
+  );
+  primeSessionCache(BACKEND_AGENTS_CACHE_KEY, nextAgents, BACKEND_AGENTS_CACHE_TTL_MS);
+}
+
+function removeAgentFromList(agentId: string) {
+  const cachedAgents = peekSessionCache<Agent[]>(BACKEND_AGENTS_CACHE_KEY, { allowExpired: true });
+  if (!cachedAgents) {
+    return;
+  }
+  primeSessionCache(
+    BACKEND_AGENTS_CACHE_KEY,
+    cachedAgents.filter((item) => item.id !== agentId),
+    BACKEND_AGENTS_CACHE_TTL_MS,
+  );
+}
+
 function invalidateBackendAgentCaches(agentId?: string) {
   const keys = [
-    BACKEND_AGENTS_CACHE_KEY,
     BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
     DASHBOARD_OVERVIEW_CACHE_KEY,
   ];
@@ -154,6 +225,42 @@ function invalidateBackendAgentCaches(agentId?: string) {
     keys.push(backendAgentCacheKey(agentId));
   }
   invalidateSessionCache(keys);
+  if (agentId) {
+    invalidateSessionCache(backendAgentResponsePagesCacheKey(agentId));
+    invalidateSessionCacheByPrefix(backendAgentResponseWorkspacePrefix(agentId));
+  } else {
+    invalidateSessionCache(BACKEND_AGENTS_CACHE_KEY);
+    invalidateSessionCacheByPrefix("backend-agent-response-workspace:");
+  }
+}
+
+function invalidateBackendAgentResponseCaches(agentId: string, chatId?: string | null) {
+  invalidateSessionCache([
+    BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
+    backendAgentResponsePagesCacheKey(agentId),
+    DASHBOARD_OVERVIEW_CACHE_KEY,
+  ]);
+
+  if (chatId) {
+    invalidateSessionCache(backendAgentResponseWorkspaceCacheKey(agentId, chatId));
+  }
+  invalidateSessionCache(backendAgentResponseWorkspaceCacheKey(agentId, null));
+}
+
+function primeBackendAgentResponseWorkspaceCache(workspace: AgentResponseWorkspace) {
+  primeSessionCache(
+    backendAgentResponseWorkspaceCacheKey(workspace.agent.id, workspace.chat_id),
+    workspace,
+    BACKEND_AGENT_RESPONSE_WORKSPACE_CACHE_TTL_MS,
+  );
+
+  if (workspace.chat_id) {
+    primeSessionCache(
+      backendAgentResponseWorkspaceCacheKey(workspace.agent.id, null),
+      workspace,
+      BACKEND_AGENT_RESPONSE_WORKSPACE_CACHE_TTL_MS,
+    );
+  }
 }
 
 function requireBrowserStorage() {
@@ -189,7 +296,7 @@ function writeCollection<T>(key: string, value: T[]) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
-function normalizeAgent(agent: Agent) {
+export function normalizeAgent(agent: Agent) {
   return {
     ...agent,
     id: agent.id || agent._id || "",
@@ -365,30 +472,7 @@ async function withBackendAuthRetry<T>(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  try {
-    return await request(accessToken);
-  } catch (error) {
-    if (!(error instanceof Error) || !refreshAccessToken) {
-      throw error;
-    }
-
-    const message = error.message.toLowerCase();
-    const isUnauthorized =
-      message.includes("invalid bearer token") ||
-      message.includes("missing bearer token") ||
-      message.includes("unauthorized");
-
-    if (!isUnauthorized) {
-      throw error;
-    }
-
-    const refreshedToken = await refreshAccessToken();
-    if (!refreshedToken) {
-      throw error;
-    }
-
-    return request(refreshedToken);
-  }
+  return withUnauthorizedRetry(request, accessToken, refreshAccessToken);
 }
 
 export async function fetchBackendAgents(
@@ -404,7 +488,7 @@ async function uploadAgentKnowledgeFileRequest(file: File, accessToken: string) 
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch("/backend/api/v1/agents/knowledge/extract", {
+  const response = await fetch("/backend/api/v1/agents/knowledge/extract-jobs", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -415,10 +499,69 @@ async function uploadAgentKnowledgeFileRequest(file: File, accessToken: string) 
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(getApiErrorMessage(body, "Failed to extract uploaded knowledge"));
+    throw new ApiRequestError(getApiErrorMessage(body, "Failed to extract uploaded knowledge"), {
+      detail: body,
+      status: response.status,
+    });
   }
 
-  return body as AgentKnowledgeUploadResult;
+  return body as AgentKnowledgeUploadJob;
+}
+
+async function fetchAgentKnowledgeUploadJobRequest(jobId: string, accessToken: string) {
+  const response = await fetch(`/backend/api/v1/agents/knowledge/extract-jobs/${jobId}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new ApiRequestError(getApiErrorMessage(body, "Failed to check uploaded knowledge"), {
+      detail: body,
+      status: response.status,
+    });
+  }
+
+  return body as AgentKnowledgeUploadJob;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForAgentKnowledgeUploadJob(
+  jobId: string,
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  const maxAttempts = 60;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const job = await withBackendAuthRetry(
+      (token) => fetchAgentKnowledgeUploadJobRequest(jobId, token),
+      accessToken,
+      refreshAccessToken,
+    );
+
+    if (job.status === "completed" && job.extracted_text) {
+      return {
+        file_name: job.file_name,
+        content_type: job.content_type,
+        extracted_text: job.extracted_text,
+        character_count: job.character_count,
+      } satisfies AgentKnowledgeUploadResult;
+    }
+
+    if (job.status === "failed") {
+      throw new Error(job.error?.trim() || "Failed to extract uploaded knowledge");
+    }
+
+    await delay(1000);
+  }
+
+  throw new Error("Knowledge extraction is taking too long. Please try again.");
 }
 
 export async function uploadAgentKnowledgeFile(
@@ -426,11 +569,12 @@ export async function uploadAgentKnowledgeFile(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withBackendAuthRetry(
+  const job = await withBackendAuthRetry(
     (token) => uploadAgentKnowledgeFileRequest(file, token),
     accessToken,
     refreshAccessToken,
   );
+  return waitForAgentKnowledgeUploadJob(job.job_id, accessToken, refreshAccessToken);
 }
 
 async function createBackendAgentRequest(agent: AgentInsert, accessToken: string) {
@@ -446,7 +590,10 @@ async function createBackendAgentRequest(agent: AgentInsert, accessToken: string
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(getApiErrorMessage(body, "Failed to create agent"));
+    throw new ApiRequestError(getApiErrorMessage(body, "Failed to create agent"), {
+      detail: body,
+      status: response.status,
+    });
   }
 
   return normalizeAgent(getApiSuccessData<Agent>(body));
@@ -462,7 +609,9 @@ export async function createBackendAgent(
     accessToken,
     refreshAccessToken,
   );
-  invalidateBackendAgentCaches();
+  primeSessionCache(backendAgentCacheKey(createdAgent.id), createdAgent, BACKEND_AGENTS_CACHE_TTL_MS);
+  mergeAgentIntoList(createdAgent);
+  invalidateSessionCache([BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY, DASHBOARD_OVERVIEW_CACHE_KEY]);
   return createdAgent;
 }
 
@@ -476,7 +625,10 @@ async function fetchBackendAgentRequest(agentId: string, accessToken: string) {
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(getApiErrorMessage(body, "Failed to load agent"));
+    throw new ApiRequestError(getApiErrorMessage(body, "Failed to load agent"), {
+      detail: body,
+      status: response.status,
+    });
   }
 
   return normalizeAgent(body as Agent);
@@ -564,10 +716,7 @@ export async function generateBackendAgentResponse(
     accessToken,
     refreshAccessToken,
   );
-  invalidateSessionCache([
-    BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
-    DASHBOARD_OVERVIEW_CACHE_KEY,
-  ]);
+  invalidateBackendAgentResponseCaches(agentId, generatedResponse.chat_id);
   return generatedResponse;
 }
 
@@ -618,7 +767,7 @@ async function fetchBackendAgentResponseWorkspaceRequest(
   accessToken: string,
 ) {
   const cachedWorkspaceSnapshot = peekSessionCache<AgentResponseWorkspace>(
-    `workspace-fallback:${agentId}:${chatId || "latest"}`,
+    backendAgentResponseWorkspaceCacheKey(agentId, chatId),
     { allowExpired: true },
   );
   const cachedAgent =
@@ -681,7 +830,7 @@ async function fetchBackendAgentResponseWorkspaceRequest(
       pages,
     } satisfies AgentResponseWorkspace;
 
-    primeSessionCache(`workspace-fallback:${agentId}:${chatId || "latest"}`, emptyWorkspace, 20_000);
+    primeBackendAgentResponseWorkspaceCache(emptyWorkspace);
     return emptyWorkspace;
   }
 
@@ -707,7 +856,7 @@ async function fetchBackendAgentResponseWorkspaceRequest(
     pages,
   } satisfies AgentResponseWorkspace;
 
-  primeSessionCache(`workspace-fallback:${agentId}:${chatId || "latest"}`, workspace, 20_000);
+  primeBackendAgentResponseWorkspaceCache(workspace);
   return workspace;
 }
 
@@ -717,10 +866,15 @@ export async function fetchBackendAgentResponseWorkspace(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withBackendAuthRetry(
-    (token) => fetchBackendAgentResponseWorkspaceRequest(agentId, chatId, token),
-    accessToken,
-    refreshAccessToken,
+  return getOrFetchSessionCached(
+    backendAgentResponseWorkspaceCacheKey(agentId, chatId),
+    BACKEND_AGENT_RESPONSE_WORKSPACE_CACHE_TTL_MS,
+    () =>
+      withBackendAuthRetry(
+        (token) => fetchBackendAgentResponseWorkspaceRequest(agentId, chatId, token),
+        accessToken,
+        refreshAccessToken,
+      ),
   );
 }
 
@@ -748,10 +902,15 @@ export async function fetchBackendAgentResponsePages(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
-  return withBackendAuthRetry(
-    (token) => fetchBackendAgentResponsePagesRequest(agentId, token),
-    accessToken,
-    refreshAccessToken,
+  return getOrFetchSessionCached(
+    backendAgentResponsePagesCacheKey(agentId),
+    BACKEND_AGENT_RESPONSE_PAGES_CACHE_TTL_MS,
+    () =>
+      withBackendAuthRetry(
+        (token) => fetchBackendAgentResponsePagesRequest(agentId, token),
+        accessToken,
+        refreshAccessToken,
+      ),
   );
 }
 
@@ -779,7 +938,7 @@ export async function fetchBackendAllAgentResponsePages(
   refreshAccessToken?: () => Promise<string | null>,
 ) {
   try {
-    return await getOrFetchSessionCached(
+    const pages = await getOrFetchSessionCached(
       BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
       BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_TTL_MS,
       () =>
@@ -789,6 +948,20 @@ export async function fetchBackendAllAgentResponsePages(
           refreshAccessToken,
         ),
     );
+    const pagesByAgent = new Map<string, AgentResponsePage[]>();
+    for (const page of pages) {
+      const agentPages = pagesByAgent.get(page.agent_id) ?? [];
+      agentPages.push(page);
+      pagesByAgent.set(page.agent_id, agentPages);
+    }
+    for (const [agentId, agentPages] of pagesByAgent) {
+      primeSessionCache(
+        backendAgentResponsePagesCacheKey(agentId),
+        agentPages,
+        BACKEND_AGENT_RESPONSE_PAGES_CACHE_TTL_MS,
+      );
+    }
+    return pages;
   } catch (error) {
     const cachedPages = peekSessionCache<AgentResponsePage[]>(
       BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
@@ -838,10 +1011,7 @@ export async function createBackendAgentResponsePage(
     accessToken,
     refreshAccessToken,
   );
-  invalidateSessionCache([
-    BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
-    DASHBOARD_OVERVIEW_CACHE_KEY,
-  ]);
+  invalidateBackendAgentResponseCaches(agentId);
   return createdPage;
 }
 
@@ -874,10 +1044,7 @@ export async function deleteBackendAgentResponsePage(
     accessToken,
     refreshAccessToken,
   );
-  invalidateSessionCache([
-    BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
-    DASHBOARD_OVERVIEW_CACHE_KEY,
-  ]);
+  invalidateBackendAgentResponseCaches(agentId, chatId);
 }
 
 async function fetchLatestBackendAgentResponseHistoryRequest(accessToken: string) {
@@ -943,10 +1110,7 @@ export async function updateBackendAgentResponseMessage(
     accessToken,
     refreshAccessToken,
   );
-  invalidateSessionCache([
-    BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
-    DASHBOARD_OVERVIEW_CACHE_KEY,
-  ]);
+  invalidateBackendAgentResponseCaches(agentId, updatedHistory.chat_id);
   return updatedHistory;
 }
 
@@ -982,10 +1146,7 @@ export async function deleteBackendAgentResponseMessage(
     accessToken,
     refreshAccessToken,
   );
-  invalidateSessionCache([
-    BACKEND_ALL_AGENT_RESPONSE_PAGES_CACHE_KEY,
-    DASHBOARD_OVERVIEW_CACHE_KEY,
-  ]);
+  invalidateBackendAgentResponseCaches(agentId, updatedHistory.chat_id);
   return updatedHistory;
 }
 
@@ -1023,7 +1184,10 @@ export async function updateBackendAgent(
     accessToken,
     refreshAccessToken,
   );
-  invalidateBackendAgentCaches(agentId);
+  primeSessionCache(backendAgentCacheKey(agentId), updatedAgent, BACKEND_AGENTS_CACHE_TTL_MS);
+  mergeAgentIntoList(updatedAgent);
+  invalidateBackendAgentResponseCaches(agentId);
+  invalidateSessionCache(DASHBOARD_OVERVIEW_CACHE_KEY);
   return updatedAgent;
 }
 
@@ -1051,6 +1215,7 @@ export async function deleteBackendAgent(
     accessToken,
     refreshAccessToken,
   );
+  removeAgentFromList(agentId);
   invalidateBackendAgentCaches(agentId);
 }
 
@@ -1462,6 +1627,9 @@ export async function createAgent(agent: AgentInsert) {
     ...agent,
     id: createId("agent"),
     template_type: agent.template_type || null,
+    category_tag: agent.category_tag || null,
+    llm_engine: agent.llm_engine || "gpt-4o",
+    status: agent.status || "enabled",
     created_at: now,
     updated_at: now,
   };

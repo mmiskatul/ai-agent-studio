@@ -56,6 +56,34 @@ export function invalidateSessionCache(keys: string | string[]) {
   }
 }
 
+export function invalidateSessionCacheByPrefix(prefixes: string | string[]) {
+  const list = Array.isArray(prefixes) ? prefixes : [prefixes];
+  for (const prefix of list) {
+    for (const key of Array.from(memoryCache.keys())) {
+      if (key.startsWith(prefix)) {
+        memoryCache.delete(key);
+        pendingCache.delete(key);
+      }
+    }
+
+    if (!canUseSessionStorage()) {
+      continue;
+    }
+
+    const keysToRemove: string[] = [];
+    for (let index = 0; index < window.sessionStorage.length; index += 1) {
+      const key = window.sessionStorage.key(index);
+      if (key?.startsWith(getStorageKey(prefix))) {
+        keysToRemove.push(key);
+      }
+    }
+
+    for (const key of keysToRemove) {
+      window.sessionStorage.removeItem(key);
+    }
+  }
+}
+
 export function clearAllSessionCache() {
   memoryCache.clear();
   pendingCache.clear();
