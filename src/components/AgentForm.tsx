@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Paperclip, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -213,6 +214,9 @@ export function AgentForm({
       updateValue("purpose", purpose);
     } catch (error) {
       setFormError(getErrorMessage(error, "Failed to generate purpose."));
+      toast.error("Could not generate purpose", {
+        description: getErrorMessage(error, "Failed to generate purpose."),
+      });
     } finally {
       setIsGeneratingDescription(false);
     }
@@ -236,6 +240,9 @@ export function AgentForm({
         knowledgeText: getErrorMessage(error, "Failed to upload knowledge."),
       }));
       setFormError(getErrorMessage(error, "Failed to upload knowledge."));
+      toast.error("Could not upload knowledge", {
+        description: getErrorMessage(error, "Failed to upload knowledge."),
+      });
     } finally {
       setIsUploadingKnowledge(false);
       if (fileInputRef.current) {
