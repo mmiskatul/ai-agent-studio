@@ -530,11 +530,7 @@ export function ChatInterface({
   hasMoreMessages = false,
   totalMessageCount = 0,
 }: ChatInterfaceProps) {
-  const welcomeMessage =
-    agent.welcome_message?.trim() ||
-    `Hi, I'm ${agent.name}. I can help with ${
-      agent.purpose || agent.description || agent.role
-    }. Share what you need, and I'll guide you through the next best steps.`;
+  const welcomeMessage = agent.welcome_message?.trim() || "";
 
   return (
     <div className="flex h-full flex-col rounded-xl border border-border bg-card">

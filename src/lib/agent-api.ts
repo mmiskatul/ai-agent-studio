@@ -569,6 +569,10 @@ export async function uploadAgentKnowledgeFile(
   accessToken: string,
   refreshAccessToken?: () => Promise<string | null>,
 ) {
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error("File is too large. Knowledge uploads must be 5 MB or smaller.");
+  }
+
   const job = await withBackendAuthRetry(
     (token) => uploadAgentKnowledgeFileRequest(file, token),
     accessToken,
