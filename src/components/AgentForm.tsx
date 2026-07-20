@@ -143,6 +143,7 @@ export function AgentForm({
     if (!values.name.trim()) nextErrors.name = "Agent name is required.";
     if (!values.role.trim()) nextErrors.role = "Role is required.";
     if (!values.purpose.trim()) nextErrors.purpose = "Purpose is required.";
+    if (values.purpose.length > 2000) nextErrors.purpose = "Purpose must be 2,000 characters or fewer.";
     if (!allowedLanguages.has(values.language)) nextErrors.language = "Select a valid language.";
     if (!allowedStatuses.has(values.status)) nextErrors.status = "Select a valid status.";
     if (
@@ -306,6 +307,7 @@ export function AgentForm({
           onChange={(event) => updateValue("purpose", event.target.value)}
           placeholder="Explain what this agent should do and how it should help users."
           rows={4}
+          maxLength={2000}
           className="mt-1"
           aria-invalid={Boolean(errors.purpose)}
         />
