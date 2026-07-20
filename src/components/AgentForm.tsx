@@ -48,6 +48,8 @@ const defaultValues: AgentFormValues = {
 
 const allowedLanguages = new Set<AgentFormValues["language"]>(["EN", "DE", "RU"]);
 const allowedStatuses = new Set<AgentFormValues["status"]>(["enabled", "disabled"]);
+const MAX_KNOWLEDGE_FILES = 10;
+const MAX_KNOWLEDGE_FILE_BYTES = 25 * 1024 * 1024;
 
 function resolveFormValues(
   initialValues?: Partial<AgentFormValues>,
@@ -99,6 +101,7 @@ export function AgentForm({
   const [formError, setFormError] = useState("");
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
   const [isUploadingKnowledge, setIsUploadingKnowledge] = useState(false);
+  const [uploadedKnowledgeFiles, setUploadedKnowledgeFiles] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -225,6 +228,18 @@ export function AgentForm({
   async function handleKnowledgeUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (uploadedKnowledgeFiles.length >= MAX_KNOWLEDGE_FILES) {
+      const message = `You can upload a maximum of ${MAX_KNOWLEDGE_FILES} documents.`;
+      setFormError(message);
+      toast.error("Upload limit reached", { description: message });
+      return;
+    }
+    if (file.size > MAX_KNOWLEDGE_FILE_BYTES) {
+      const message = "Each document must be 25 MB or smaller.";
+      setFormError(message);
+      toast.error("Document is too large", { description: message });
+      return;
+    }
     if (!accessToken) {
       setErrors((current) => ({ ...current, knowledgeText: "Sign in again to upload knowledge." }));
       return;
@@ -233,7 +248,8 @@ export function AgentForm({
     setIsUploadingKnowledge(true);
     try {
       const result = await uploadAgentKnowledgeFile(file, accessToken, refreshAccessToken);
-      updateValue("knowledgeText", result.extracted_text);
+      updateValue("knowledgeText", values.knowledgeText.trim() ? `${values.knowledgeText.trim()}\n\n${result.extracted_text}` : result.extracted_text);
+      setUploadedKnowledgeFiles((current) => [...current, file.name]);
     } catch (error) {
       setErrors((current) => ({
         ...current,
@@ -359,7 +375,7 @@ export function AgentForm({
           <p className="mt-1 text-xs text-destructive">{errors.knowledgeText}</p>
         ) : null}
         <p className="mt-1 text-xs text-muted-foreground">
-          Supported: PDF, TXT, MD, CSV, JSON. Uploaded text is stored on the agent and used in chat.
+          Up to 10 documents, 25 MB each. Supported: PDF, TXT, MD, CSV, JSON. Extracted text is combined and stored on the agent.
         </p>
       </div>
 
