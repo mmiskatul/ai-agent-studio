@@ -345,7 +345,7 @@ export function AgentForm({
               ref={fileInputRef}
               id="agent-knowledge-file"
               type="file"
-              accept=".pdf,.txt,.md,.csv,.json"
+              accept=".pdf,.txt,.md,.csv,.json,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tif,.tiff"
               className="hidden"
               onChange={handleKnowledgeUpload}
             />
@@ -375,7 +375,7 @@ export function AgentForm({
           <p className="mt-1 text-xs text-destructive">{errors.knowledgeText}</p>
         ) : null}
         <p className="mt-1 text-xs text-muted-foreground">
-          Up to 10 documents, 25 MB each. Supported: PDF, TXT, MD, CSV, JSON. Extracted text is combined and stored on the agent.
+          Up to 10 documents, 25 MB each. Supported: PDF, text, and common image formats. AI-extracted content is combined and stored on the agent.
         </p>
       </div>
 
