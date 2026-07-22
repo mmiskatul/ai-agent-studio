@@ -35,10 +35,13 @@ export function AppSidebar() {
 
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-border bg-sidebar">
-      <div className="flex h-14 items-center gap-2 border-b border-sidebar-border px-5">
+      <Link
+        href="/dashboard"
+        className="flex h-14 items-center gap-2 border-b border-sidebar-border px-5 transition-opacity hover:opacity-80"
+      >
         <Bot className="h-6 w-6 text-sidebar-primary" />
         <span className="text-lg font-semibold text-sidebar-foreground">AgentHub</span>
-      </div>
+      </Link>
 
       <nav className="flex-1 space-y-1 p-3">
         {navItems.map((item) => {
