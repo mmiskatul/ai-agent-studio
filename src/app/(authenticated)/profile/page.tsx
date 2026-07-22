@@ -7,6 +7,7 @@ import {
   Camera,
   CircleUserRound,
   ImagePlus,
+  KeyRound,
   LogOut,
   Mail,
   Save,
@@ -22,6 +23,8 @@ import {
   PROFILE_CACHE_KEY,
   type ProfileResponse,
   updateProfile,
+  changePassword,
+  logoutAllDevices,
 } from "@/lib/profile-api";
 
 function formatDate(value?: string) {
@@ -49,6 +52,12 @@ export default function ProfilePage() {
   const [profileImageInput, setProfileImageInput] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [securityMessage, setSecurityMessage] = useState<string | null>(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isSigningOutDevices, setIsSigningOutDevices] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const displayName =
     displayNameInput.trim() ||
@@ -85,6 +94,41 @@ export default function ProfilePage() {
     void loadProfileStats();
   }, [accessToken, authLoading, refreshAccessToken]);
 
+  async function handleChangePassword(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!accessToken) return;
+    if (newPassword !== confirmPassword) {
+      setSecurityMessage("New passwords do not match.");
+      return;
+    }
+    setIsChangingPassword(true);
+    setSecurityMessage(null);
+    try {
+      const result = await changePassword(accessToken, currentPassword, newPassword, refreshAccessToken);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setSecurityMessage(result.message);
+    } catch (error) {
+      setSecurityMessage(error instanceof Error ? error.message : "Failed to change password.");
+    } finally {
+      setIsChangingPassword(false);
+    }
+  }
+
+  async function handleSignOutDevices() {
+    if (!accessToken) return;
+    setIsSigningOutDevices(true);
+    setSecurityMessage(null);
+    try {
+      const result = await logoutAllDevices(accessToken, refreshAccessToken);
+      setSecurityMessage(result.message + ". All sessions were invalidated.");
+    } catch (error) {
+      setSecurityMessage(error instanceof Error ? error.message : "Failed to sign out other devices.");
+    } finally {
+      setIsSigningOutDevices(false);
+    }
+  }
   if (loadingProfile && !profile) {
     return (
       <div className="mx-auto w-full max-w-6xl p-6">
@@ -353,6 +397,38 @@ export default function ProfilePage() {
           </div>
         </aside>
       </div>
+      <section className="agent-card mt-6 p-6">
+        <div className="mb-5 flex items-center gap-2">
+          <KeyRound className="h-5 w-5 text-primary" />
+          <div>
+            <h2 className="text-lg font-bold text-foreground">Security Settings</h2>
+            <p className="text-sm text-muted-foreground">Change your password or sign out all devices.</p>
+          </div>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <form onSubmit={handleChangePassword} className="space-y-4 rounded-lg border border-border bg-background p-4">
+            <p className="font-semibold text-foreground">Change Password</p>
+            <Input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} placeholder="Current password" required minLength={1} />
+            <Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="New password" required minLength={6} />
+            <Input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirm new password" required minLength={6} />
+            <Button type="submit" disabled={isChangingPassword || !accessToken}>
+              {isChangingPassword ? "Changing..." : "Change Password"}
+            </Button>
+          </form>
+
+          <div className="rounded-lg border border-border bg-background p-4">
+            <p className="font-semibold text-foreground">Sign out other devices</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              This invalidates every active session, including this device. You may need to sign in again.
+            </p>
+            <Button type="button" variant="outline" className="mt-4" onClick={handleSignOutDevices} disabled={isSigningOutDevices || !accessToken}>
+              {isSigningOutDevices ? "Signing out..." : "Sign Out All Devices"}
+            </Button>
+          </div>
+        </div>
+        {securityMessage ? <p className="mt-4 text-sm text-muted-foreground">{securityMessage}</p> : null}
+      </section>
     </div>
   );
 }

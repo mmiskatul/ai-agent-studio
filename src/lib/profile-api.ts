@@ -133,3 +133,55 @@ export async function updateProfile(
   invalidateSessionCache(PROFILE_CACHE_KEY);
   return updatedProfile;
 }
+
+export interface AuthActionResponse {
+  message: string;
+}
+
+async function authActionRequest(
+  path: string,
+  accessToken: string,
+  input?: Record<string, string>,
+) {
+  const response = await fetch(`/backend/api/v1/auth/${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: input ? JSON.stringify(input) : undefined,
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(body, "Authentication action failed"));
+  }
+  return body as AuthActionResponse;
+}
+
+export async function changePassword(
+  accessToken: string,
+  currentPassword: string,
+  newPassword: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withProfileAuthRetry(
+    (token) =>
+      authActionRequest("change-password", token, {
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
+    accessToken,
+    refreshAccessToken,
+  );
+}
+
+export async function logoutAllDevices(
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string | null>,
+) {
+  return withProfileAuthRetry(
+    (token) => authActionRequest("logout-all", token),
+    accessToken,
+    refreshAccessToken,
+  );
+}
