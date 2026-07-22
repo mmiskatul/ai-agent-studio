@@ -18,6 +18,15 @@ export default function AuthenticatedLayout({ children }: Readonly<{ children: R
     }
   }, [loading, router, sessionToken, user]);
 
+  useEffect(() => {
+    if (loading || !sessionToken) return;
+
+    const intervalId = window.setInterval(() => {
+      void refreshAccessToken();
+    }, 30_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [loading, refreshAccessToken, sessionToken]);
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
