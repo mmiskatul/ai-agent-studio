@@ -117,11 +117,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const session = readStoredSession();
-    setUser(session?.user ?? null);
-    setAccessToken(session?.accessToken ?? null);
-    setSessionToken(session?.sessionToken ?? null);
-    setLoading(false);
+    let cancelled = false;
+
+    async function hydrateSession() {
+      const storedSession = readStoredSession();
+      if (!storedSession) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        let nextSession = storedSession;
+        try {
+          await requestJson<AuthUser>("/auth/me", {
+            headers: { Authorization: `Bearer ${storedSession.accessToken}` },
+          });
+        } catch {
+          const refreshed = await requestJson<{ access_token: string }>("/auth/refresh", {
+            method: "POST",
+            body: JSON.stringify({ session_token: storedSession.sessionToken }),
+          });
+          nextSession = { ...storedSession, accessToken: refreshed.access_token };
+        }
+
+        if (cancelled) return;
+        writeStoredSession(nextSession);
+        setUser(nextSession.user);
+        setAccessToken(nextSession.accessToken);
+        setSessionToken(nextSession.sessionToken);
+      } catch {
+        if (cancelled) return;
+        clearStoredSession();
+        clearAllSessionCache();
+        setUser(null);
+        setAccessToken(null);
+        setSessionToken(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void hydrateSession();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const storeTokenResponse = useCallback((response: TokenResponse) => {
