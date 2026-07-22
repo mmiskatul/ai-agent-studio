@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Activity,
@@ -122,7 +123,9 @@ export default function ProfilePage() {
     setSecurityMessage(null);
     try {
       const result = await logoutAllDevices(accessToken, refreshAccessToken);
-      setSecurityMessage(result.message + ". All sessions were invalidated.");
+      setSecurityMessage(result.message + ". Signing you out now.");
+      await signOut();
+      router.replace("/sign-in");
     } catch (error) {
       setSecurityMessage(error instanceof Error ? error.message : "Failed to sign out other devices.");
     } finally {
