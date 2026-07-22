@@ -226,30 +226,66 @@ export function AgentForm({
   }
 
   async function handleKnowledgeUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (uploadedKnowledgeFiles.length >= MAX_KNOWLEDGE_FILES) {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) return;
+
+    const remainingSlots = MAX_KNOWLEDGE_FILES - uploadedKnowledgeFiles.length;
+    if (remainingSlots <= 0) {
       const message = `You can upload a maximum of ${MAX_KNOWLEDGE_FILES} documents.`;
       setFormError(message);
       toast.error("Upload limit reached", { description: message });
       return;
     }
-    if (file.size > MAX_KNOWLEDGE_FILE_BYTES) {
+
+    const filesToUpload = files.slice(0, remainingSlots);
+    const skippedCount = files.length - filesToUpload.length;
+    const oversizedFiles = filesToUpload.filter((file) => file.size > MAX_KNOWLEDGE_FILE_BYTES);
+    const validFiles = filesToUpload.filter((file) => file.size <= MAX_KNOWLEDGE_FILE_BYTES);
+
+    if (oversizedFiles.length > 0) {
       const message = "Each document must be 25 MB or smaller.";
       setFormError(message);
       toast.error("Document is too large", { description: message });
-      return;
     }
-    if (!accessToken) {
+    if (!accessToken || validFiles.length === 0) {
       setErrors((current) => ({ ...current, knowledgeText: "Sign in again to upload knowledge." }));
       return;
     }
 
     setIsUploadingKnowledge(true);
     try {
-      const result = await uploadAgentKnowledgeFile(file, accessToken, refreshAccessToken);
-      updateValue("knowledgeText", values.knowledgeText.trim() ? `${values.knowledgeText.trim()}\n\n${result.extracted_text}` : result.extracted_text);
-      setUploadedKnowledgeFiles((current) => [...current, file.name]);
+      const extractedTexts: string[] = [];
+      const uploadedNames: string[] = [];
+      const failedNames: string[] = [];
+
+      for (const file of validFiles) {
+        try {
+          const result = await uploadAgentKnowledgeFile(file, accessToken, refreshAccessToken);
+          extractedTexts.push(result.extracted_text);
+          uploadedNames.push(file.name);
+        } catch {
+          failedNames.push(file.name);
+        }
+      }
+
+      if (extractedTexts.length > 0) {
+        const extractedText = extractedTexts.join("\n\n");
+        updateValue("knowledgeText", values.knowledgeText.trim()
+          ? `${values.knowledgeText.trim()}\n\n${extractedText}`
+          : extractedText);
+      }
+      setUploadedKnowledgeFiles((current) => [...current, ...uploadedNames]);
+
+      if (skippedCount > 0) {
+        toast.error("Upload limit reached", {
+          description: `${skippedCount} file${skippedCount === 1 ? " was" : "s were"} skipped. You can upload a maximum of ${MAX_KNOWLEDGE_FILES} documents.`,
+        });
+      }
+      if (failedNames.length > 0) {
+        const message = `Could not upload: ${failedNames.join(", ")}`;
+        setFormError(message);
+        toast.error("Some files could not be uploaded", { description: message });
+      }
     } catch (error) {
       setErrors((current) => ({
         ...current,
@@ -261,12 +297,9 @@ export function AgentForm({
       });
     } finally {
       setIsUploadingKnowledge(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
-
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {Object.keys(errors).length > 0 ? (
@@ -345,6 +378,7 @@ export function AgentForm({
               ref={fileInputRef}
               id="agent-knowledge-file"
               type="file"
+              multiple
               accept=".pdf,.txt,.md,.csv,.json,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tif,.tiff"
               className="hidden"
               onChange={handleKnowledgeUpload}
@@ -358,7 +392,7 @@ export function AgentForm({
               disabled={isSubmitting || isUploadingKnowledge || !accessToken}
             >
               <Paperclip className="h-3.5 w-3.5" />
-              {isUploadingKnowledge ? "Uploading..." : "Upload PDF/Text"}
+              {isUploadingKnowledge ? "Uploading..." : "Upload files"}
             </Button>
           </div>
         </div>
