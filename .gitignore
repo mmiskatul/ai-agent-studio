@@ -27,7 +27,6 @@ __pycache__/
 .dev.vars
 
 # Editor directories and files
-.vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
@@ -37,7 +36,7 @@ __pycache__/
 *.sln
 *.sw?
 
-.env
 branch_structure.json
 temp_auto_push.bat
 temp_interactive_push.bat
+config.bat
