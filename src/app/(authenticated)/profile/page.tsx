@@ -42,6 +42,7 @@ function formatDate(value?: string) {
 }
 
 export default function ProfilePage() {
+  const router = useRouter();
   const { user, accessToken, sessionToken, refreshAccessToken, signOut, loading: authLoading } =
     useAuth();
   const cachedProfile = peekSessionCache<ProfileResponse>(PROFILE_CACHE_KEY, {
